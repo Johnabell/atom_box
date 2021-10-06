@@ -1,49 +1,27 @@
 #![allow(dead_code)]
-use std::sync::atomic::{Ordering, AtomicPtr, AtomicBool, AtomicUsize};
+#![feature(const_fn_trait_bound)]
 use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+
+mod domain;
+use crate::domain::Domain;
 
 static SHARED_DOMAIN: Domain = Domain::new();
 
 #[derive(Debug)]
-struct Domain {
-    values: AtomicPtr<RetiredNode>,
-    hazard_ptrs: HazardPtrs,
-}
-
-#[derive(Debug)]
-struct HazardPtrs {
-    head: AtomicPtr<HazPtr>,
-    count: AtomicUsize,
-}
-
-impl Domain {
-    const fn new() -> Self {
-        Self {
-            hazard_ptrs: HazardPtrs {
-                head: AtomicPtr::new(std::ptr::null_mut()),
-                count: AtomicUsize::new(0),
-            },
-            values: AtomicPtr::new(std::ptr::null_mut()),
-        }
-    }
-
-    fn aquire_haz_ptr(&self) -> &HazPtr {
-        todo!()
-    }
-    
-    fn retire(&self, value: &dyn Retirable) {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
 pub struct HazPtr {
     pub(crate) ptr: AtomicPtr<usize>,
-    pub(crate) next: AtomicPtr<HazPtr>,
     pub(crate) active: AtomicBool,
 }
 
 impl HazPtr {
+    pub(crate) fn new(active: bool) -> Self {
+        Self {
+            ptr: AtomicPtr::new(std::ptr::null_mut()),
+            active: AtomicBool::new(active),
+        }
+    }
+
     pub(crate) fn reset(&self) {
         self.ptr.store(std::ptr::null_mut(), Ordering::Release);
     }
@@ -67,16 +45,6 @@ impl HazPtr {
 }
 
 #[derive(Debug)]
-struct RetiredNode {
-    value: *mut dyn Retirable,
-    next: AtomicPtr<RetiredNode>
-}
-
-trait Retirable {}
-
-impl<T> Retirable for T {}
-
-#[derive(Debug)]
 struct HazardBox<'domain, T> {
     ptr: AtomicPtr<T>,
     domain: &'domain Domain,
@@ -89,14 +57,11 @@ impl<'domain, T> HazardBox<'domain, T> {
 
     pub fn new_with_domain(value: T, domain: &'domain Domain) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
-        Self {
-            ptr,
-            domain,
-        } 
+        Self { ptr, domain }
     }
 
     pub fn load(&self) -> HazardLoadGuard<'domain, T> {
-        let haz_ptr = self.domain.aquire_haz_ptr();
+        let haz_ptr = self.domain.acquire_haz_ptr();
         // load pointer
         let mut original_ptr = self.ptr.load(Ordering::Relaxed);
 
@@ -105,14 +70,14 @@ impl<'domain, T> HazardBox<'domain, T> {
             haz_ptr.protect(original_ptr as *mut usize);
 
             // check pointer
-            let current_ptr = self.ptr.load(Ordering::Acquire); 
+            let current_ptr = self.ptr.load(Ordering::Acquire);
             if current_ptr == original_ptr {
                 // The pointer is the same, we have successfully protected its value.
                 break current_ptr;
             }
             haz_ptr.reset();
             original_ptr = current_ptr;
-        }; 
+        };
         HazardLoadGuard {
             ptr,
             domain: self.domain,
@@ -129,8 +94,19 @@ impl<'domain, T> HazardBox<'domain, T> {
         }
     }
 
-    pub fn swap_with_guarded_value(&self, new_value: HazardStoreGuard<'domain, T>) -> HazardStoreGuard<'domain, T> {
-        // TODO: is it alright to place in a value from another domain
+    /// Store a new value in the guarded pointer.
+    ///
+    /// # Panic
+    ///
+    /// Function panics if a guarded object from another domain is passed to this function.
+    pub fn swap_with_guarded_value(
+        &self,
+        new_value: HazardStoreGuard<'domain, T>,
+    ) -> HazardStoreGuard<'domain, T> {
+        // TODO: can we make this statically enforced?
+        // if new_value.domain != self.domain {
+        //     panic!("Cannot use guarded value from different domain");
+        // }
         let new_ptr = new_value.ptr;
         std::mem::forget(new_value);
         let old_ptr = self.ptr.swap(new_ptr as *mut T, Ordering::AcqRel);
@@ -140,22 +116,69 @@ impl<'domain, T> HazardBox<'domain, T> {
         }
     }
 
-
-    pub fn compare_exchange(&self, current_value: HazardLoadGuard<'domain, T>, new_value: T) -> Result<HazardStoreGuard<'domain, T>, HazardLoadGuard<'domain, T>> {
+    pub fn compare_exchange(
+        &self,
+        current_value: HazardLoadGuard<'domain, T>,
+        new_value: T,
+    ) -> Result<HazardStoreGuard<'domain, T>, HazardLoadGuard<'domain, T>> {
         let new_ptr = Box::into_raw(Box::new(new_value));
-        match self.ptr.compare_exchange(current_value.ptr as *mut T, new_ptr, Ordering::AcqRel, Ordering::AcqRel) {
-            Ok(ptr) => Ok(HazardStoreGuard { ptr, domain: self.domain }),
-            Err(ptr) => Err(HazardLoadGuard { ptr, domain: self.domain, haz_ptr: None }),
+        match self.ptr.compare_exchange(
+            current_value.ptr as *mut T,
+            new_ptr,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(ptr) => Ok(HazardStoreGuard {
+                ptr,
+                domain: self.domain,
+            }),
+            Err(ptr) => Err(HazardLoadGuard {
+                ptr,
+                domain: self.domain,
+                haz_ptr: None,
+            }),
         }
     }
 
-    pub fn compare_exchange_with_guard(&self, current_value: HazardLoadGuard<'domain, T>, new_value: HazardStoreGuard<'domain, T>) -> Result<HazardStoreGuard<'domain, T>, HazardLoadGuard<'domain, T>> {
-        // TODO: is it alright to place in a value from another domain
+    /// Store a new value in the guarded pointer if its value matchs `current_value`.
+    ///
+    /// # Panic
+    ///
+    /// Function panics if a guarded object from another domain is passed to this function.
+    pub fn compare_exchange_with_guard(
+        &self,
+        current_value: HazardLoadGuard<'domain, T>,
+        new_value: HazardStoreGuard<'domain, T>,
+    ) -> Result<
+        HazardStoreGuard<'domain, T>,
+        (HazardLoadGuard<'domain, T>, HazardStoreGuard<'domain, T>),
+    > {
+        // TODO: can we make this statically enforced?
+        // if new_value.domain != self.domain {
+        //     panic!("Cannot use guarded value from different domain");
+        // }
         let new_ptr = new_value.ptr;
-        std::mem::forget(new_value);
-        match self.ptr.compare_exchange(current_value.ptr as *mut T, new_ptr as *mut T, Ordering::AcqRel, Ordering::AcqRel) {
-            Ok(ptr) => Ok(HazardStoreGuard { ptr, domain: self.domain }),
-            Err(ptr) => Err(HazardLoadGuard { ptr, domain: self.domain, haz_ptr: None }),
+        match self.ptr.compare_exchange(
+            current_value.ptr as *mut T,
+            new_ptr as *mut T,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(ptr) => {
+                std::mem::forget(new_value);
+                Ok(HazardStoreGuard {
+                    ptr,
+                    domain: self.domain,
+                })
+            }
+            Err(ptr) => Err((
+                HazardLoadGuard {
+                    ptr,
+                    domain: self.domain,
+                    haz_ptr: None,
+                },
+                new_value,
+            )),
         }
     }
 
@@ -182,10 +205,18 @@ impl<T> Deref for HazardStoreGuard<'_, T> {
 
 impl<T> Drop for HazardStoreGuard<'_, T> {
     fn drop(&mut self) {
-        self.domain.retire(&self.ptr);
+        // # Safety
+        //
+        // The pointer to this object was originally created via box into raw.
+        // The heap alocated value cannot be dropped via external code.
+        // We are the only person with this pointer in a store guard. There might
+        // be other people referencing it as a read only value where it is protected
+        // via hazard pointers.
+        // We are safe to flag it for retire, where it will be reclaimed when it is no longer
+        // protected by any hazard pointers.
+        unsafe { self.domain.retire(&self.ptr) };
     }
 }
-
 
 struct HazardLoadGuard<'domain, T> {
     ptr: *const T,
