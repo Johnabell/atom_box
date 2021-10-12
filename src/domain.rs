@@ -1,12 +1,29 @@
 use super::HazPtr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 static SHARED_DOMAIN: Domain = Domain::new();
 
 #[derive(Debug)]
 pub(crate) struct Domain {
-    retired: LockFreeList<*mut dyn Retirable>,
+    // TODO: consider using TraitObject
+    retired: LockFreeList<Retire>,
     hazard_ptrs: LockFreeList<HazPtr>,
+}
+
+#[derive(Debug)]
+struct Retire {
+    ptr: *mut usize,
+    retirable: *mut dyn Retirable,
+}
+
+impl Retire {
+    fn new<T>(ptr: *mut T) -> Self {
+        Self {
+            ptr: ptr as *mut usize,
+            retirable: unsafe { std::mem::transmute(ptr as *mut dyn Retirable) },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -57,9 +74,110 @@ impl Domain {
     /// Must ensure that no-one else calls retire on the same value.
     /// Value must be associated with this domain.
     /// Value must be able to live as long as the domain.
-    pub(crate) unsafe fn retire(&self, value: &dyn Retirable) {
-        self.retired
-            .push(unsafe { std::mem::transmute::<_, *mut (dyn Retirable + 'static)>(value) });
+    pub(crate) unsafe fn retire<T>(&self, value: *mut T) {
+        self.retired.push(Retire::new(value));
+        if self.should_reclaim() {
+            self.bulk_reclaim();
+        }
+    }
+
+    fn should_reclaim(&self) -> bool {
+        // TODO: implement better heuristic
+        true
+    }
+
+    fn bulk_reclaim(&self) -> usize {
+        let retired_list = self
+            .retired
+            .head
+            .swap(std::ptr::null_mut(), Ordering::Acquire);
+        self.retired.count.store(0, Ordering::Release);
+        if retired_list.is_null() {
+            return 0;
+        }
+        let guarded_ptrs = self.get_guarded_ptrs();
+        let reclaimed = self.reclaim_unguarded(guarded_ptrs, retired_list);
+        reclaimed
+    }
+
+    fn reclaim_unguarded(
+        &self,
+        guarded_ptrs: HashSet<*mut usize>,
+        retired_list: *mut Node<Retire>,
+    ) -> usize {
+        let mut node_ptr = retired_list;
+        let mut still_retired = std::ptr::null_mut();
+        let mut tail_ptr = None;
+        let mut reclaimed = 0;
+        let mut number_remaining = 0;
+        println!("Begining reclaim");
+        while !node_ptr.is_null() {
+            // # Safety
+            //
+            // We have exclusive access to the list of reired pointers.
+            let node = unsafe { &*node_ptr };
+            let next = node.next.load(Ordering::Relaxed);
+            // TODO: fix bug
+            if guarded_ptrs.contains(&(node.value.ptr)) {
+                // The pointer is still guarded keep in the retired list
+                println!("Pointer gaurded");
+                node.next.store(still_retired, Ordering::Relaxed);
+                still_retired = node_ptr;
+                if tail_ptr.is_none() {
+                    tail_ptr = Some(&node.next);
+                }
+                number_remaining += 1;
+            } else {
+                println!("Pointer being freed");
+                // Dealocate the retired item
+                //
+                // # Safety
+                //
+                // The value was originally allocated via a box. Therefore all the safety
+                // requirement of box are met. According to the safety requirements of retire,
+                // the pointer has not yet been dropped and has only been placed in the retired
+                // list once. There are currently no other threads looking at the value since it is
+                // no longer protected by any of the hazard pointers.
+                unsafe { std::ptr::drop_in_place(node.value.retirable) };
+                // # Safety
+                //
+                // The node was originally allocated via box, therefore, all the safety
+                // requirements of box are met. We have exclusive access to the node so can
+                // therefore safely drop it.
+                let _node = unsafe { Box::from_raw(node_ptr) };
+                reclaimed += 1;
+            }
+            node_ptr = next;
+        }
+
+        if let Some(tail) = tail_ptr {
+            self.retired.push_all(still_retired, tail, number_remaining);
+        }
+
+        reclaimed
+    }
+
+    fn get_guarded_ptrs(&self) -> HashSet<*mut usize> {
+        let mut guarded_ptrs = HashSet::new();
+        let mut node_ptr = self.hazard_ptrs.head.load(Ordering::Acquire);
+        while !node_ptr.is_null() {
+            // # Safety
+            //
+            // Hazard pointers are only dealocated when the domain is droped
+            let node = unsafe { &*node_ptr };
+            if node.value.active.load(Ordering::Acquire) {
+                guarded_ptrs.insert(node.value.ptr.load(Ordering::Acquire));
+            }
+            node_ptr = node.next.load(Ordering::Acquire);
+        }
+        guarded_ptrs
+    }
+}
+
+impl Drop for Domain {
+    fn drop(&mut self) {
+        self.bulk_reclaim();
+        assert!(self.retired.head.get_mut().is_null());
     }
 }
 
@@ -124,6 +242,23 @@ impl<T> LockFreeList<T> {
     }
 }
 
+impl<T> Drop for Node<T> {
+    fn drop(&mut self) {
+        println!("Dropping node");
+    }
+}
+
+impl<T> Drop for LockFreeList<T> {
+    fn drop(&mut self) {
+        println!("Dropping list");
+        let mut node_ptr = *self.head.get_mut();
+        while !node_ptr.is_null() {
+            let mut node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
+            node_ptr = *node.next.get_mut();
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -145,7 +280,7 @@ mod test {
             node_ptr,
             "Head of list is new node"
         );
-        let node = unsafe { &mut *node_ptr };
+        let node: &Node<usize> = unsafe { &*node_ptr };
         assert_eq!(node.value, 1, "Value of item in node should be 1");
         assert!(node.next.load(Ordering::Acquire).is_null());
     }
@@ -175,5 +310,7 @@ mod test {
             node_ptr = node.next.load(Ordering::Acquire);
         }
         assert_eq!(values, [2, 2, 2, 1, 1, 1, 1]);
+        // To avoid dropping the nodes which we moved from list2 to list1
+        std::mem::forget(list2);
     }
 }

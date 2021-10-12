@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![feature(const_fn_trait_bound)]
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 mod domain;
 use crate::domain::Domain;
@@ -214,7 +214,7 @@ impl<T> Drop for HazardStoreGuard<'_, T> {
         // via hazard pointers.
         // We are safe to flag it for retire, where it will be reclaimed when it is no longer
         // protected by any hazard pointers.
-        unsafe { self.domain.retire(&self.ptr) };
+        unsafe { self.domain.retire(self.ptr as *mut T) };
     }
 }
 
@@ -268,5 +268,30 @@ mod test {
         });
         handle1.join().unwrap();
         handle2.join().unwrap();
+    }
+
+    #[test]
+    fn single_thread_retire() {
+        let hazard_box = HazardBox::new(20);
+
+        let value = hazard_box.load();
+        assert_eq!(*value, 20);
+        assert_eq!(
+            value.ptr,
+            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire)
+        );
+
+        {
+            // Immediately retire the original value
+            let guard = hazard_box.swap(30);
+            assert_eq!(guard.ptr, value.ptr);
+            let new_value = hazard_box.load();
+            assert_eq!(*new_value, 30);
+        }
+        assert_eq!(*value, 20);
+        drop(value);
+        let _ = hazard_box.swap(40);
+        let final_value = hazard_box.load();
+        assert_eq!(*final_value, 40);
     }
 }
