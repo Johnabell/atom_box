@@ -240,7 +240,11 @@ impl Domain {
         }
 
         if let Some(tail) = tail_ptr {
-            self.retired.push_all(still_retired, tail, number_remaining);
+            // # Safety
+            //
+            // All of the nodes in this list were originally owned by the retired list. We are
+            // putting them back in.
+            unsafe { self.retired.push_all(still_retired, tail, number_remaining) };
         }
 
         reclaimed
@@ -299,10 +303,21 @@ impl<T> LockFreeList<T> {
             value,
             next: AtomicPtr::new(std::ptr::null_mut()),
         }));
-        self.push_all(node, &unsafe { &mut *node }.next, 1)
+
+        // # Safety
+        //
+        // We have ownership of T and we have just created the node so also own that. 
+        //
+        // Since we have just created the node we are also safe to dereference it
+        unsafe { self.push_all(node, &(&mut *node).next, 1) }
     }
 
-    fn push_all(
+    // # Safety
+    //
+    // This function should be considered to be moving ownership of the nodes and values into this
+    // list. To use this function you should adhere to the contract that you will not drop these
+    // values.
+    unsafe fn push_all(
         &self,
         new_head_ptr: *mut Node<T>,
         tail_ptr: &AtomicPtr<Node<T>>,
@@ -388,7 +403,11 @@ mod test {
         let head_ptr = list2.push(2);
 
         // Act
-        list.push_all(head_ptr, &unsafe { &mut *tail_node_ptr }.next, 3);
+        // # Safety
+        //
+        // `list2` has ownership of these values so we are considering them to be moved into list.
+        // To avoid a double free we `mem::forget` `list2`
+        unsafe { list.push_all(head_ptr, &(&mut *tail_node_ptr).next, 3) };
 
         // Assert
         let mut values = Vec::new();
