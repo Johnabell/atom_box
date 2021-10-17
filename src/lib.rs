@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 mod domain;
 use crate::domain::Domain;
 
-static SHARED_DOMAIN: Domain = Domain::new();
+static SHARED_DOMAIN: Domain = Domain::default();
 
 #[derive(Debug)]
 pub struct HazPtr {
@@ -249,6 +249,7 @@ impl<T> Deref for HazardLoadGuard<'_, T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    static TEST_DOMAIN: domain::Domain = domain::Domain::new(domain::ReclaimStrategy::Eager);
 
     #[test]
     fn api_test() {
