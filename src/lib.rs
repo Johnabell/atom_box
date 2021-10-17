@@ -55,6 +55,10 @@ impl<'domain, T> HazardBox<'domain, T> {
         Self::new_with_domain(value, &SHARED_DOMAIN)
     }
 
+    pub fn new_static(value: T) -> &'static mut Self {
+        Box::leak(Box::new(HazardBox::new(value)))
+    }
+
     pub fn new_with_domain(value: T, domain: &'domain Domain) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self { ptr, domain }
@@ -249,11 +253,31 @@ impl<T> Deref for HazardLoadGuard<'_, T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+
     static TEST_DOMAIN: domain::Domain = domain::Domain::new(domain::ReclaimStrategy::Eager);
+
+    struct DropTester<'a, T> {
+        drop_count: &'a AtomicUsize,
+        value: T
+    }
+
+    impl<'a, T> Drop for DropTester<'a,T> {
+        fn drop(&mut self) {
+            self.drop_count.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
+    impl<'a, T> Deref for DropTester<'a, T> {
+        type Target = T;
+        fn deref(&self) -> &Self::Target {
+            &self.value
+        }
+    }
 
     #[test]
     fn api_test() {
-        let hazard_box: &'static _ = Box::leak(Box::new(HazardBox::new(50)));
+        let hazard_box: &'static _ = HazardBox::new_static(50);
 
         let value = hazard_box.load();
         assert_eq!(*value, 50);
@@ -294,5 +318,38 @@ mod test {
         let _ = hazard_box.swap(40);
         let final_value = hazard_box.load();
         assert_eq!(*final_value, 40);
+    }
+
+    #[test]
+    fn drop_test() {
+        let drop_count = AtomicUsize::new(0);
+        let value = DropTester {
+            drop_count: &drop_count,
+            value: 20
+        };
+        let hazard_box = HazardBox::new_with_domain(value, &TEST_DOMAIN);
+
+        let value = hazard_box.load();
+        assert_eq!(drop_count.load(Ordering::Acquire), 0);
+        assert_eq!(**value, 20);
+        assert_eq!(
+            value.ptr as *mut usize,
+            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire)
+        );
+
+        {
+            // Immediately retire the original value
+            let guard = hazard_box.swap(DropTester { drop_count: &drop_count, value: 30 });
+            assert_eq!(guard.ptr, value.ptr);
+            let new_value = hazard_box.load();
+            assert_eq!(**new_value, 30);
+        }
+        assert_eq!(drop_count.load(Ordering::Acquire), 0, "Value should not be dropped while there is an active reference to it");
+        assert_eq!(**value, 20);
+        drop(value);
+        let _ = hazard_box.swap(DropTester { drop_count: &drop_count, value: 40 });
+        let final_value = hazard_box.load();
+        assert_eq!(**final_value, 40);
+        assert_eq!(drop_count.load(Ordering::Acquire), 2);
     }
 }
