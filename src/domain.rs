@@ -306,7 +306,7 @@ impl<T> LockFreeList<T> {
 
         // # Safety
         //
-        // We have ownership of T and we have just created the node so also own that. 
+        // We have ownership of T and we have just created the node so also own that.
         //
         // Since we have just created the node we are also safe to dereference it
         unsafe { self.push_all(node, &(&mut *node).next, 1) }

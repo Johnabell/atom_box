@@ -259,10 +259,10 @@ mod test {
 
     struct DropTester<'a, T> {
         drop_count: &'a AtomicUsize,
-        value: T
+        value: T,
     }
 
-    impl<'a, T> Drop for DropTester<'a,T> {
+    impl<'a, T> Drop for DropTester<'a, T> {
         fn drop(&mut self) {
             self.drop_count.fetch_add(1, Ordering::AcqRel);
         }
@@ -325,7 +325,7 @@ mod test {
         let drop_count = AtomicUsize::new(0);
         let value = DropTester {
             drop_count: &drop_count,
-            value: 20
+            value: 20,
         };
         let hazard_box = HazardBox::new_with_domain(value, &TEST_DOMAIN);
 
@@ -339,17 +339,67 @@ mod test {
 
         {
             // Immediately retire the original value
-            let guard = hazard_box.swap(DropTester { drop_count: &drop_count, value: 30 });
+            let guard = hazard_box.swap(DropTester {
+                drop_count: &drop_count,
+                value: 30,
+            });
             assert_eq!(guard.ptr, value.ptr);
             let new_value = hazard_box.load();
             assert_eq!(**new_value, 30);
         }
-        assert_eq!(drop_count.load(Ordering::Acquire), 0, "Value should not be dropped while there is an active reference to it");
+        assert_eq!(
+            drop_count.load(Ordering::Acquire),
+            0,
+            "Value should not be dropped while there is an active reference to it"
+        );
         assert_eq!(**value, 20);
         drop(value);
-        let _ = hazard_box.swap(DropTester { drop_count: &drop_count, value: 40 });
+        let _ = hazard_box.swap(DropTester {
+            drop_count: &drop_count,
+            value: 40,
+        });
         let final_value = hazard_box.load();
         assert_eq!(**final_value, 40);
         assert_eq!(drop_count.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn swap_with_gaurd_test() {
+        let drop_count = AtomicUsize::new(0);
+        let drop_count_for_placeholder = AtomicUsize::new(0);
+        let value1 = DropTester {
+            drop_count: &drop_count,
+            value: 10,
+        };
+        let value2 = DropTester {
+            drop_count: &drop_count,
+            value: 20,
+        };
+        let hazard_box1 = HazardBox::new_with_domain(value1, &TEST_DOMAIN);
+        let hazard_box2 = HazardBox::new_with_domain(value2, &TEST_DOMAIN);
+
+        {
+            // Immediately retire the original value
+            let guard1 = hazard_box1.swap(DropTester {
+                drop_count: &drop_count_for_placeholder,
+                value: 30,
+            });
+            let guard2 = hazard_box2.swap_with_guarded_value(guard1);
+            let _ = hazard_box1.swap_with_guarded_value(guard2);
+            let new_value1 = hazard_box1.load();
+            let new_value2 = hazard_box2.load();
+            assert_eq!(**new_value1, 20);
+            assert_eq!(**new_value2, 10);
+        }
+        assert_eq!(
+            drop_count_for_placeholder.load(Ordering::Acquire),
+            1,
+            "The placeholder value should have been dropped"
+        );
+        assert_eq!(
+            drop_count.load(Ordering::Acquire),
+            0,
+            "Neither of the intial values should have been dropped"
+        );
     }
 }
