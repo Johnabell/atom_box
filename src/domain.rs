@@ -124,7 +124,7 @@ impl Domain {
         Self {
             hazard_ptrs: LockFreeList::new(),
             retired: LockFreeList::new(),
-            reclaim_strategy: reclaim_strategy,
+            reclaim_strategy
         }
     }
 
@@ -186,8 +186,7 @@ impl Domain {
             return 0;
         }
         let guarded_ptrs = self.get_guarded_ptrs();
-        let reclaimed = self.reclaim_unguarded(guarded_ptrs, retired_list);
-        reclaimed
+        self.reclaim_unguarded(guarded_ptrs, retired_list)
     }
 
     fn reclaim_unguarded(
@@ -309,7 +308,7 @@ impl<T> LockFreeList<T> {
         // We have ownership of T and we have just created the node so also own that.
         //
         // Since we have just created the node we are also safe to dereference it
-        unsafe { self.push_all(node, &(&mut *node).next, 1) }
+        unsafe { self.push_all(node, &(*node).next, 1) }
     }
 
     // # Safety

@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+# Vim swp files
+**/.*.swp
