@@ -124,7 +124,7 @@ impl Domain {
         Self {
             hazard_ptrs: LockFreeList::new(),
             retired: LockFreeList::new(),
-            reclaim_strategy
+            reclaim_strategy,
         }
     }
 
