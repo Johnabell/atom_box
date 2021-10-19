@@ -41,6 +41,8 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     }
 
     pub const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+        // Find away to statically enforce this
+        #[cfg(nightly)]
         assert!(DOMAIN_ID != 0);
         Self::_new(reclaim_strategy)
     }
@@ -121,7 +123,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
 
     fn reclaim_unguarded(
         &self,
-        guarded_ptrs: HashSet<*mut usize>,
+        guarded_ptrs: HashSet<*const usize>,
         retired_list: *mut Node<Retire>,
     ) -> usize {
         let mut node_ptr = retired_list;
@@ -136,7 +138,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
             // We have exclusive access to the list of reired pointers.
             let node = unsafe { &*node_ptr };
             let next = node.next.load(Ordering::Relaxed);
-            if guarded_ptrs.contains(&(node.value.ptr)) {
+            if guarded_ptrs.contains(&(node.value.ptr as *const usize)) {
                 // The pointer is still guarded keep in the retired list
                 println!("Pointer gaurded");
                 node.next.store(still_retired, Ordering::Relaxed);
@@ -183,7 +185,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
         reclaimed
     }
 
-    fn get_guarded_ptrs(&self) -> HashSet<*mut usize> {
+    fn get_guarded_ptrs(&self) -> HashSet<*const usize> {
         let mut guarded_ptrs = HashSet::new();
         let mut node_ptr = self.hazard_ptrs.head.load(Ordering::Acquire);
         while !node_ptr.is_null() {
@@ -192,7 +194,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
             // Hazard pointers are only dealocated when the domain is droped
             let node = unsafe { &*node_ptr };
             if node.value.active.load(Ordering::Acquire) {
-                guarded_ptrs.insert(node.value.ptr.load(Ordering::Acquire));
+                guarded_ptrs.insert(node.value.ptr.load(Ordering::Acquire) as *const usize);
             }
             node_ptr = node.next.load(Ordering::Acquire);
         }

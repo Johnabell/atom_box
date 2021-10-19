@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-#![feature(const_fn_trait_bound)]
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
