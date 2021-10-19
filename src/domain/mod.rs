@@ -88,6 +88,8 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     /// Value must be associated with this domain.
     /// Value must be able to live as long as the domain.
     pub(crate) unsafe fn retire<T>(&self, value: *mut T) {
+        std::sync::atomic::fence(Ordering::SeqCst);
+
         self.retired.push(Retire::new(value));
         if self.should_reclaim() {
             self.bulk_reclaim();
@@ -106,6 +108,9 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
             .retired
             .head
             .swap(std::ptr::null_mut(), Ordering::Acquire);
+
+        std::sync::atomic::fence(Ordering::SeqCst);
+
         self.retired.count.store(0, Ordering::Release);
         if retired_list.is_null() {
             return 0;
@@ -152,18 +157,22 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
                 // list once. There are currently no other threads looking at the value since it is
                 // no longer protected by any of the hazard pointers.
                 unsafe { std::ptr::drop_in_place(node.value.retirable) };
+
                 // # Safety
                 //
                 // The node was originally allocated via box, therefore, all the safety
                 // requirements of box are met. We have exclusive access to the node so can
                 // therefore safely drop it.
                 let _node = unsafe { Box::from_raw(node_ptr) };
+
                 reclaimed += 1;
             }
             node_ptr = next;
         }
 
         if let Some(tail) = tail_ptr {
+            std::sync::atomic::fence(Ordering::SeqCst);
+
             // # Safety
             //
             // All of the nodes in this list were originally owned by the retired list. We are

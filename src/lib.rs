@@ -79,6 +79,8 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             // protect pointer
             haz_ptr.protect(original_ptr as *mut usize);
 
+            std::sync::atomic::fence(Ordering::SeqCst);
+
             // check pointer
             let current_ptr = self.ptr.load(Ordering::Acquire);
             if current_ptr == original_ptr {
