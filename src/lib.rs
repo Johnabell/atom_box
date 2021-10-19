@@ -45,12 +45,12 @@ impl HazPtr {
 }
 
 #[derive(Debug)]
-struct HazardBox<'domain, T, const DOMAIN_ID: usize> {
+struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     ptr: AtomicPtr<T>,
     domain: &'domain Domain<DOMAIN_ID>,
 }
 
-impl<T> HazardBox<'static, T, 0> {
+impl<T> AtomBox<'static, T, 0> {
     pub fn new(value: T) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self {
@@ -64,7 +64,7 @@ impl<T> HazardBox<'static, T, 0> {
     }
 }
 
-impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
+impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     pub fn new_with_domain(value: T, domain: &'domain Domain<DOMAIN_ID>) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self { ptr, domain }
@@ -362,17 +362,17 @@ mod test {
 
     #[test]
     fn api_test() {
-        let hazard_box: &'static _ = HazardBox::new_static(50);
+        let atom_box: &'static _ = AtomBox::new_static(50);
 
-        let value = hazard_box.load();
+        let value = atom_box.load();
         assert_eq!(*value, 50);
         let handle1 = std::thread::spawn(move || {
-            let h_box = hazard_box;
+            let h_box = atom_box;
             let value = h_box.load();
             assert_eq!(*value, 50);
         });
         let handle2 = std::thread::spawn(move || {
-            let h_box = hazard_box;
+            let h_box = atom_box;
             let value = h_box.load();
             assert_eq!(*value, 50);
         });
@@ -382,9 +382,9 @@ mod test {
 
     #[test]
     fn single_thread_retire() {
-        let hazard_box = HazardBox::new(20);
+        let atom_box = AtomBox::new(20);
 
-        let value = hazard_box.load();
+        let value = atom_box.load();
         assert_eq!(*value, 20);
         assert_eq!(
             value.ptr,
@@ -393,15 +393,15 @@ mod test {
 
         {
             // Immediately retire the original value
-            let guard = hazard_box.swap(30);
+            let guard = atom_box.swap(30);
             assert_eq!(guard.ptr, value.ptr);
-            let new_value = hazard_box.load();
+            let new_value = atom_box.load();
             assert_eq!(*new_value, 30);
         }
         assert_eq!(*value, 20);
         drop(value);
-        let _ = hazard_box.swap(40);
-        let final_value = hazard_box.load();
+        let _ = atom_box.swap(40);
+        let final_value = atom_box.load();
         assert_eq!(*final_value, 40);
     }
 
@@ -412,9 +412,9 @@ mod test {
             drop_count: &drop_count,
             value: 20,
         };
-        let hazard_box = HazardBox::new_with_domain(value, &TEST_DOMAIN);
+        let atom_box = AtomBox::new_with_domain(value, &TEST_DOMAIN);
 
-        let value = hazard_box.load();
+        let value = atom_box.load();
         assert_eq!(drop_count.load(Ordering::Acquire), 0);
         assert_eq!(**value, 20);
         assert_eq!(
@@ -424,12 +424,12 @@ mod test {
 
         {
             // Immediately retire the original value
-            let guard = hazard_box.swap(DropTester {
+            let guard = atom_box.swap(DropTester {
                 drop_count: &drop_count,
                 value: 30,
             });
             assert_eq!(guard.ptr, value.ptr);
-            let new_value = hazard_box.load();
+            let new_value = atom_box.load();
             assert_eq!(**new_value, 30);
         }
         assert_eq!(
@@ -439,11 +439,11 @@ mod test {
         );
         assert_eq!(**value, 20);
         drop(value);
-        let _ = hazard_box.swap(DropTester {
+        let _ = atom_box.swap(DropTester {
             drop_count: &drop_count,
             value: 40,
         });
-        let final_value = hazard_box.load();
+        let final_value = atom_box.load();
         assert_eq!(**final_value, 40);
         assert_eq!(drop_count.load(Ordering::Acquire), 2);
     }
@@ -460,19 +460,19 @@ mod test {
             drop_count: &drop_count,
             value: 20,
         };
-        let hazard_box1 = HazardBox::new_with_domain(value1, &TEST_DOMAIN);
-        let hazard_box2 = HazardBox::new_with_domain(value2, &TEST_DOMAIN);
+        let atom_box1 = AtomBox::new_with_domain(value1, &TEST_DOMAIN);
+        let atom_box2 = AtomBox::new_with_domain(value2, &TEST_DOMAIN);
 
         {
             // Immediately retire the original value
-            let guard1 = hazard_box1.swap(DropTester {
+            let guard1 = atom_box1.swap(DropTester {
                 drop_count: &drop_count_for_placeholder,
                 value: 30,
             });
-            let guard2 = hazard_box2.swap_with_guarded_value(guard1);
-            let _ = hazard_box1.swap_with_guarded_value(guard2);
-            let new_value1 = hazard_box1.load();
-            let new_value2 = hazard_box2.load();
+            let guard2 = atom_box2.swap_with_guarded_value(guard1);
+            let _ = atom_box1.swap_with_guarded_value(guard2);
+            let new_value1 = atom_box1.load();
+            let new_value2 = atom_box2.load();
             assert_eq!(**new_value1, 20);
             assert_eq!(**new_value2, 10);
         }
