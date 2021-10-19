@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 mod domain;
 use crate::domain::Domain;
 
-static SHARED_DOMAIN: Domain = Domain::default();
+static SHARED_DOMAIN: Domain<0> = Domain::default();
 
 #[derive(Debug)]
 pub struct HazPtr {
@@ -45,26 +45,32 @@ impl HazPtr {
 }
 
 #[derive(Debug)]
-struct HazardBox<'domain, T> {
+struct HazardBox<'domain, T, const DOMAIN_ID: usize> {
     ptr: AtomicPtr<T>,
-    domain: &'domain Domain,
+    domain: &'domain Domain<DOMAIN_ID>,
 }
 
-impl<'domain, T> HazardBox<'domain, T> {
+impl<T> HazardBox<'static, T, 0> {
     pub fn new(value: T) -> Self {
-        Self::new_with_domain(value, &SHARED_DOMAIN)
+        let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
+        Self {
+            ptr,
+            domain: &SHARED_DOMAIN,
+        }
     }
 
     pub fn new_static(value: T) -> &'static mut Self {
-        Box::leak(Box::new(HazardBox::new(value)))
+        Box::leak(Box::new(Self::new(value)))
     }
+}
 
-    pub fn new_with_domain(value: T, domain: &'domain Domain) -> Self {
+impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
+    pub fn new_with_domain(value: T, domain: &'domain Domain<DOMAIN_ID>) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self { ptr, domain }
     }
 
-    pub fn load(&self) -> HazardLoadGuard<'domain, T> {
+    pub fn load(&self) -> HazardLoadGuard<'domain, T, DOMAIN_ID> {
         let haz_ptr = self.domain.acquire_haz_ptr();
         // load pointer
         let mut original_ptr = self.ptr.load(Ordering::Relaxed);
@@ -89,7 +95,7 @@ impl<'domain, T> HazardBox<'domain, T> {
         }
     }
 
-    pub fn swap(&self, new_value: T) -> HazardStoreGuard<'domain, T> {
+    pub fn swap(&self, new_value: T) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
         let new_ptr = Box::into_raw(Box::new(new_value));
         let old_ptr = self.ptr.swap(new_ptr, Ordering::AcqRel);
         HazardStoreGuard {
@@ -105,12 +111,10 @@ impl<'domain, T> HazardBox<'domain, T> {
     /// Function panics if a guarded object from another domain is passed to this function.
     pub fn swap_with_guarded_value(
         &self,
-        new_value: HazardStoreGuard<'domain, T>,
-    ) -> HazardStoreGuard<'domain, T> {
-        // TODO: can we make this statically enforced?
-        // if new_value.domain != self.domain {
-        //     panic!("Cannot use guarded value from different domain");
-        // }
+        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
+    ) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
+        assert!(std::ptr::eq(new_value.domain, self.domain), "Cannot use guarded value from different domain");
+
         let new_ptr = new_value.ptr;
         std::mem::forget(new_value);
         let old_ptr = self.ptr.swap(new_ptr as *mut T, Ordering::AcqRel);
@@ -122,9 +126,10 @@ impl<'domain, T> HazardBox<'domain, T> {
 
     pub fn compare_exchange(
         &self,
-        current_value: HazardLoadGuard<'domain, T>,
+        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
         new_value: T,
-    ) -> Result<HazardStoreGuard<'domain, T>, HazardLoadGuard<'domain, T>> {
+    ) -> Result<HazardStoreGuard<'domain, T, DOMAIN_ID>, HazardLoadGuard<'domain, T, DOMAIN_ID>>
+    {
         let new_ptr = Box::into_raw(Box::new(new_value));
         match self.ptr.compare_exchange(
             current_value.ptr as *mut T,
@@ -151,16 +156,17 @@ impl<'domain, T> HazardBox<'domain, T> {
     /// Function panics if a guarded object from another domain is passed to this function.
     pub fn compare_exchange_with_guard(
         &self,
-        current_value: HazardLoadGuard<'domain, T>,
-        new_value: HazardStoreGuard<'domain, T>,
+        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
+        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
     ) -> Result<
-        HazardStoreGuard<'domain, T>,
-        (HazardLoadGuard<'domain, T>, HazardStoreGuard<'domain, T>),
+        HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        (
+            HazardLoadGuard<'domain, T, DOMAIN_ID>,
+            HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        ),
     > {
-        // TODO: can we make this statically enforced?
-        // if new_value.domain != self.domain {
-        //     panic!("Cannot use guarded value from different domain");
-        // }
+        assert!(std::ptr::eq(new_value.domain, self.domain), "Cannot use guarded value from different domain");
+
         let new_ptr = new_value.ptr;
         match self.ptr.compare_exchange(
             current_value.ptr as *mut T,
@@ -189,12 +195,12 @@ impl<'domain, T> HazardBox<'domain, T> {
     // TODO: implement compare exchange weak
 }
 
-struct HazardStoreGuard<'domain, T> {
+struct HazardStoreGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
-    domain: &'domain Domain,
+    domain: &'domain Domain<DOMAIN_ID>,
 }
 
-impl<T> Deref for HazardStoreGuard<'_, T> {
+impl<T, const DOMAIN_ID: usize> Deref for HazardStoreGuard<'_, T, DOMAIN_ID> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         // # Saftey
@@ -207,7 +213,7 @@ impl<T> Deref for HazardStoreGuard<'_, T> {
     }
 }
 
-impl<T> Drop for HazardStoreGuard<'_, T> {
+impl<T, const DOMAIN_ID: usize> Drop for HazardStoreGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
         // # Safety
         //
@@ -222,13 +228,13 @@ impl<T> Drop for HazardStoreGuard<'_, T> {
     }
 }
 
-struct HazardLoadGuard<'domain, T> {
+struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
-    domain: &'domain Domain,
+    domain: &'domain Domain<DOMAIN_ID>,
     haz_ptr: Option<&'domain HazPtr>,
 }
 
-impl<T> Drop for HazardLoadGuard<'_, T> {
+impl<T, const DOMAIN_ID: usize> Drop for HazardLoadGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
         if let Some(haz_ptr) = self.haz_ptr {
             haz_ptr.reset();
@@ -237,7 +243,7 @@ impl<T> Drop for HazardLoadGuard<'_, T> {
     }
 }
 
-impl<T> Deref for HazardLoadGuard<'_, T> {
+impl<T, const DOMAIN_ID: usize> Deref for HazardLoadGuard<'_, T, DOMAIN_ID> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         // # Saftey
@@ -255,7 +261,7 @@ mod test {
     use super::*;
     use std::sync::atomic::AtomicUsize;
 
-    static TEST_DOMAIN: domain::Domain = domain::Domain::new(domain::ReclaimStrategy::Eager);
+    static TEST_DOMAIN: domain::Domain<1> = domain::Domain::new(domain::ReclaimStrategy::Eager);
 
     struct DropTester<'a, T> {
         drop_count: &'a AtomicUsize,

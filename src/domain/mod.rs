@@ -12,6 +12,7 @@ pub(crate) trait Retirable {}
 
 impl<T> Retirable for T {}
 
+// TODO: consider using TraitObject
 #[derive(Debug)]
 struct Retire {
     ptr: *mut usize,
@@ -28,19 +29,23 @@ impl Retire {
 }
 
 #[derive(Debug)]
-pub struct Domain {
-    // TODO: consider using TraitObject
+pub struct Domain<const DOMAIN_ID: usize> {
     retired: LockFreeList<Retire>,
     hazard_ptrs: LockFreeList<HazPtr>,
     reclaim_strategy: ReclaimStrategy,
 }
 
-impl Domain {
+impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     pub(crate) const fn default() -> Self {
-        Self::new(ReclaimStrategy::default())
+        Self::_new(ReclaimStrategy::default())
     }
 
-    pub(crate) const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+    pub const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+        assert!(DOMAIN_ID != 0);
+        Self::_new(reclaim_strategy)
+    }
+
+    pub(crate) const fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
         Self {
             hazard_ptrs: LockFreeList::new(),
             retired: LockFreeList::new(),
@@ -186,7 +191,7 @@ impl Domain {
     }
 }
 
-impl Drop for Domain {
+impl<const DOMAIN_ID: usize> Drop for Domain<DOMAIN_ID> {
     fn drop(&mut self) {
         self.bulk_reclaim();
         assert!(self.retired.head.get_mut().is_null());
