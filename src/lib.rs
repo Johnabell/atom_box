@@ -95,6 +95,10 @@ impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
         }
     }
 
+    pub fn store(&self, value: T) {
+        let _ = self.swap(value);
+    }
+
     pub fn swap(&self, new_value: T) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
         let new_ptr = Box::into_raw(Box::new(new_value));
         let old_ptr = self.ptr.swap(new_ptr, Ordering::AcqRel);
@@ -113,7 +117,10 @@ impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
         &self,
         new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
     ) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
-        assert!(std::ptr::eq(new_value.domain, self.domain), "Cannot use guarded value from different domain");
+        assert!(
+            std::ptr::eq(new_value.domain, self.domain),
+            "Cannot use guarded value from different domain"
+        );
 
         let new_ptr = new_value.ptr;
         std::mem::forget(new_value);
@@ -165,7 +172,10 @@ impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
             HazardStoreGuard<'domain, T, DOMAIN_ID>,
         ),
     > {
-        assert!(std::ptr::eq(new_value.domain, self.domain), "Cannot use guarded value from different domain");
+        assert!(
+            std::ptr::eq(new_value.domain, self.domain),
+            "Cannot use guarded value from different domain"
+        );
 
         let new_ptr = new_value.ptr;
         match self.ptr.compare_exchange(
@@ -192,7 +202,76 @@ impl<'domain, T, const DOMAIN_ID: usize> HazardBox<'domain, T, DOMAIN_ID> {
         }
     }
 
-    // TODO: implement compare exchange weak
+    pub fn compare_exchange_weak(
+        &self,
+        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
+        new_value: T,
+    ) -> Result<HazardStoreGuard<'domain, T, DOMAIN_ID>, HazardLoadGuard<'domain, T, DOMAIN_ID>>
+    {
+        let new_ptr = Box::into_raw(Box::new(new_value));
+        match self.ptr.compare_exchange_weak(
+            current_value.ptr as *mut T,
+            new_ptr,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(ptr) => Ok(HazardStoreGuard {
+                ptr,
+                domain: self.domain,
+            }),
+            Err(ptr) => Err(HazardLoadGuard {
+                ptr,
+                domain: self.domain,
+                haz_ptr: None,
+            }),
+        }
+    }
+
+    /// Store a new value in the guarded pointer if its value matchs `current_value`.
+    ///
+    /// # Panic
+    ///
+    /// Function panics if a guarded object from another domain is passed to this function.
+    pub fn compare_exchange_weak_with_guard(
+        &self,
+        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
+        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
+    ) -> Result<
+        HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        (
+            HazardLoadGuard<'domain, T, DOMAIN_ID>,
+            HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        ),
+    > {
+        assert!(
+            std::ptr::eq(new_value.domain, self.domain),
+            "Cannot use guarded value from different domain"
+        );
+
+        let new_ptr = new_value.ptr;
+        match self.ptr.compare_exchange_weak(
+            current_value.ptr as *mut T,
+            new_ptr as *mut T,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(ptr) => {
+                std::mem::forget(new_value);
+                Ok(HazardStoreGuard {
+                    ptr,
+                    domain: self.domain,
+                })
+            }
+            Err(ptr) => Err((
+                HazardLoadGuard {
+                    ptr,
+                    domain: self.domain,
+                    haz_ptr: None,
+                },
+                new_value,
+            )),
+        }
+    }
 }
 
 struct HazardStoreGuard<'domain, T, const DOMAIN_ID: usize> {
