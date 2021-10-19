@@ -5,20 +5,21 @@ on:
     branches: [ master ]
 
 name: Continuous integration
-env:
-  TOOLCHAIN: nightly
 
 jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [ stable, nightly ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ env.TOOLCHAIN }}
+          toolchain: ${{ matrix.rust }}
           override: true
       - uses: actions-rs/cargo@v1
         with:
@@ -27,13 +28,16 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [ stable, nightly ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ env.TOOLCHAIN }}
+          toolchain: ${{ matrix.rust }}
           override: true
       - uses: actions-rs/cargo@v1
         with:
@@ -42,13 +46,16 @@ jobs:
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [ stable, nightly ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ env.TOOLCHAIN }}
+          toolchain: ${{ matrix.rust }}
           override: true
       - run: rustup component add rustfmt
       - uses: actions-rs/cargo@v1
@@ -59,13 +66,16 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [ stable, nightly ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ env.TOOLCHAIN }}
+          toolchain: ${{ matrix.rust }}
           override: true
       - run: rustup component add clippy
       - uses: actions-rs/cargo@v1
