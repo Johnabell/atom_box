@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 mod domain;
 use crate::domain::Domain;
 
-static SHARED_DOMAIN: Domain<0> = Domain::default();
+const SHARED_DOMAIN_ID: usize = 0;
+static SHARED_DOMAIN: Domain<SHARED_DOMAIN_ID> = Domain::default();
 
 #[derive(Debug)]
 pub struct HazPtr {
@@ -49,7 +50,7 @@ struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     domain: &'domain Domain<DOMAIN_ID>,
 }
 
-impl<T> AtomBox<'static, T, 0> {
+impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
     pub fn new(value: T) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self {

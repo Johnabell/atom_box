@@ -43,7 +43,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     pub const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
         // Find away to statically enforce this
         #[cfg(nightly)]
-        assert!(DOMAIN_ID != 0);
+        assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
         Self::_new(reclaim_strategy)
     }
 
