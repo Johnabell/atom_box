@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicIsize, AtomicPtr, Ordering};
+use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 
 #[derive(Debug)]
 pub(super) struct LockFreeList<T> {
@@ -13,7 +13,16 @@ pub(super) struct Node<T> {
 }
 
 impl<T> LockFreeList<T> {
+    #[cfg(not(loom))]
     pub(super) const fn new() -> Self {
+        Self {
+            head: AtomicPtr::new(std::ptr::null_mut()),
+            count: AtomicIsize::new(0),
+        }
+    }
+
+    #[cfg(loom)]
+    pub(super) fn new() -> Self {
         Self {
             head: AtomicPtr::new(std::ptr::null_mut()),
             count: AtomicIsize::new(0),
@@ -77,10 +86,10 @@ impl<T> Drop for Node<T> {
 impl<T> Drop for LockFreeList<T> {
     fn drop(&mut self) {
         println!("Dropping list");
-        let mut node_ptr = *self.head.get_mut();
+        let mut node_ptr = self.head.load(Ordering::Relaxed);
         while !node_ptr.is_null() {
-            let mut node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
-            node_ptr = *node.next.get_mut();
+            let node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
+            node_ptr = node.next.load(Ordering::Relaxed);
         }
     }
 }

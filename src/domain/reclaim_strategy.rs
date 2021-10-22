@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::sync::{AtomicU64, Ordering};
 use std::time::Duration;
 
 const DEFAULT_SYNC_THRESHOLD: Duration = Duration::from_nanos(2000000000);
@@ -21,6 +21,12 @@ impl ReclaimStrategy {
         }
     }
 
+    #[cfg(loom)]
+    pub fn default() -> Self {
+        Self::TimedCapped(TimeCappedSettings::default())
+    }
+
+    #[cfg(not(loom))]
     pub const fn default() -> Self {
         Self::TimedCapped(TimeCappedSettings::default())
     }
@@ -35,7 +41,22 @@ pub struct TimeCappedSettings {
 }
 
 impl TimeCappedSettings {
+    #[cfg(not(loom))]
     pub const fn new(
+        sync_timeout: Duration,
+        retired_threshold: isize,
+        hazard_pointer_multiplier: isize,
+    ) -> Self {
+        Self {
+            last_sync_time: AtomicU64::new(0),
+            sync_timeout,
+            retired_threshold,
+            hazard_pointer_multiplier,
+        }
+    }
+
+    #[cfg(loom)]
+    pub fn new(
         sync_timeout: Duration,
         retired_threshold: isize,
         hazard_pointer_multiplier: isize,
@@ -81,7 +102,17 @@ impl TimeCappedSettings {
                 .is_ok()
     }
 
+    #[cfg(not(loom))]
     const fn default() -> Self {
+        Self::new(
+            DEFAULT_SYNC_THRESHOLD,
+            DEFAULT_RETIERED_THRESHOLD,
+            DEFAULT_HAZARD_POINTER_MULTIPLIER,
+        )
+    }
+
+    #[cfg(loom)]
+    fn default() -> Self {
         Self::new(
             DEFAULT_SYNC_THRESHOLD,
             DEFAULT_RETIERED_THRESHOLD,

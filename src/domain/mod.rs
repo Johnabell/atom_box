@@ -3,10 +3,10 @@ use super::HazPtr;
 mod list;
 mod reclaim_strategy;
 
+use crate::sync::Ordering;
 use list::{LockFreeList, Node};
 pub use reclaim_strategy::ReclaimStrategy;
 use std::collections::HashSet;
-use std::sync::atomic::Ordering;
 
 pub(crate) trait Retirable {}
 
@@ -36,10 +36,12 @@ pub struct Domain<const DOMAIN_ID: usize> {
 }
 
 impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
+    #[cfg(not(loom))]
     pub(crate) const fn default() -> Self {
         Self::_new(ReclaimStrategy::default())
     }
 
+    #[cfg(not(loom))]
     pub const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
         // Find away to statically enforce this
         #[cfg(nightly)]
@@ -47,7 +49,17 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
         Self::_new(reclaim_strategy)
     }
 
+    #[cfg(not(loom))]
     pub(crate) const fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
+        Self {
+            hazard_ptrs: LockFreeList::new(),
+            retired: LockFreeList::new(),
+            reclaim_strategy,
+        }
+    }
+
+    #[cfg(loom)]
+    pub(crate) fn new(reclaim_strategy: ReclaimStrategy) -> Self {
         Self {
             hazard_ptrs: LockFreeList::new(),
             retired: LockFreeList::new(),
@@ -205,6 +217,6 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
 impl<const DOMAIN_ID: usize> Drop for Domain<DOMAIN_ID> {
     fn drop(&mut self) {
         self.bulk_reclaim();
-        assert!(self.retired.head.get_mut().is_null());
+        assert!(self.retired.head.load(Ordering::Relaxed).is_null());
     }
 }

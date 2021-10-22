@@ -1,48 +1,18 @@
 #![allow(dead_code)]
+use crate::sync::{AtomicPtr, Ordering};
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 mod domain;
+mod hazard_ptr;
+mod sync;
+
 use crate::domain::Domain;
+use hazard_ptr::HazPtr;
 
 const SHARED_DOMAIN_ID: usize = 0;
+
+#[cfg(not(loom))]
 static SHARED_DOMAIN: Domain<SHARED_DOMAIN_ID> = Domain::default();
-
-#[derive(Debug)]
-pub struct HazPtr {
-    pub(crate) ptr: AtomicPtr<usize>,
-    pub(crate) active: AtomicBool,
-}
-
-impl HazPtr {
-    pub(crate) fn new(active: bool) -> Self {
-        Self {
-            ptr: AtomicPtr::new(std::ptr::null_mut()),
-            active: AtomicBool::new(active),
-        }
-    }
-
-    pub(crate) fn reset(&self) {
-        self.ptr.store(std::ptr::null_mut(), Ordering::Release);
-    }
-
-    pub(crate) fn protect(&self, ptr: *mut usize) {
-        self.ptr.store(ptr, Ordering::Release);
-    }
-
-    pub(crate) fn release(&self) {
-        self.active.store(false, Ordering::Release);
-    }
-
-    pub(crate) fn try_acquire(&self) -> bool {
-        let active = self.active.load(Ordering::Acquire);
-        !active
-            && self
-                .active
-                .compare_exchange(active, true, Ordering::Release, Ordering::Relaxed)
-                .is_ok()
-    }
-}
 
 #[derive(Debug)]
 struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
@@ -50,6 +20,7 @@ struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     domain: &'domain Domain<DOMAIN_ID>,
 }
 
+#[cfg(not(loom))]
 impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
     pub fn new(value: T) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
@@ -340,9 +311,11 @@ impl<T, const DOMAIN_ID: usize> Deref for HazardLoadGuard<'_, T, DOMAIN_ID> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::atomic::AtomicUsize;
 
-    static TEST_DOMAIN: domain::Domain<1> = domain::Domain::new(domain::ReclaimStrategy::Eager);
+    #[cfg(loom)]
+    pub(crate) use loom::sync::atomic::AtomicUsize;
+    #[cfg(not(loom))]
+    pub(crate) use std::sync::atomic::AtomicUsize;
 
     struct DropTester<'a, T> {
         drop_count: &'a AtomicUsize,
@@ -362,6 +335,7 @@ mod test {
         }
     }
 
+    #[cfg(not(loom))]
     #[test]
     fn api_test() {
         let atom_box: &'static _ = AtomBox::new_static(50);
@@ -382,6 +356,7 @@ mod test {
         handle2.join().unwrap();
     }
 
+    #[cfg(not(loom))]
     #[test]
     fn single_thread_retire() {
         let atom_box = AtomBox::new(20);
@@ -409,12 +384,15 @@ mod test {
 
     #[test]
     fn drop_test() {
+        let test_domain: &'static domain::Domain<1> = Box::leak(Box::new(domain::Domain::new(
+            domain::ReclaimStrategy::Eager,
+        )));
         let drop_count = AtomicUsize::new(0);
         let value = DropTester {
             drop_count: &drop_count,
             value: 20,
         };
-        let atom_box = AtomBox::new_with_domain(value, &TEST_DOMAIN);
+        let atom_box = AtomBox::new_with_domain(value, test_domain);
 
         let value = atom_box.load();
         assert_eq!(drop_count.load(Ordering::Acquire), 0);
@@ -447,11 +425,14 @@ mod test {
         });
         let final_value = atom_box.load();
         assert_eq!(**final_value, 40);
-        assert_eq!(drop_count.load(Ordering::Acquire), 2);
+        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
     }
 
     #[test]
     fn swap_with_gaurd_test() {
+        let test_domain: &'static domain::Domain<1> = Box::leak(Box::new(domain::Domain::new(
+            domain::ReclaimStrategy::Eager,
+        )));
         let drop_count = AtomicUsize::new(0);
         let drop_count_for_placeholder = AtomicUsize::new(0);
         let value1 = DropTester {
@@ -462,8 +443,8 @@ mod test {
             drop_count: &drop_count,
             value: 20,
         };
-        let atom_box1 = AtomBox::new_with_domain(value1, &TEST_DOMAIN);
-        let atom_box2 = AtomBox::new_with_domain(value2, &TEST_DOMAIN);
+        let atom_box1 = AtomBox::new_with_domain(value1, test_domain);
+        let atom_box2 = AtomBox::new_with_domain(value2, test_domain);
 
         {
             // Immediately retire the original value
