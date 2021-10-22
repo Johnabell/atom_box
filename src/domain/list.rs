@@ -94,6 +94,7 @@ impl<T> Drop for LockFreeList<T> {
     }
 }
 
+#[cfg(not(loom))]
 #[cfg(test)]
 mod test {
     use super::*;

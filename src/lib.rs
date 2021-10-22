@@ -2,7 +2,7 @@
 use crate::sync::{AtomicPtr, Ordering};
 use std::ops::Deref;
 
-mod domain;
+pub mod domain;
 mod hazard_ptr;
 mod sync;
 
@@ -15,7 +15,7 @@ const SHARED_DOMAIN_ID: usize = 0;
 static SHARED_DOMAIN: Domain<SHARED_DOMAIN_ID> = Domain::default();
 
 #[derive(Debug)]
-struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
+pub struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     ptr: AtomicPtr<T>,
     domain: &'domain Domain<DOMAIN_ID>,
 }
@@ -247,7 +247,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     }
 }
 
-struct HazardStoreGuard<'domain, T, const DOMAIN_ID: usize> {
+pub struct HazardStoreGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
     domain: &'domain Domain<DOMAIN_ID>,
 }
@@ -280,7 +280,7 @@ impl<T, const DOMAIN_ID: usize> Drop for HazardStoreGuard<'_, T, DOMAIN_ID> {
     }
 }
 
-struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
+pub struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
     domain: &'domain Domain<DOMAIN_ID>,
     haz_ptr: Option<&'domain HazPtr>,
@@ -308,14 +308,14 @@ impl<T, const DOMAIN_ID: usize> Deref for HazardLoadGuard<'_, T, DOMAIN_ID> {
     }
 }
 
+#[cfg(not(loom))]
 #[cfg(test)]
 mod test {
     use super::*;
 
-    #[cfg(loom)]
-    pub(crate) use loom::sync::atomic::AtomicUsize;
-    #[cfg(not(loom))]
     pub(crate) use std::sync::atomic::AtomicUsize;
+
+    static TEST_DOMAIN: domain::Domain<1> = Domain::new(domain::ReclaimStrategy::Eager);
 
     struct DropTester<'a, T> {
         drop_count: &'a AtomicUsize,
@@ -335,7 +335,6 @@ mod test {
         }
     }
 
-    #[cfg(not(loom))]
     #[test]
     fn api_test() {
         let atom_box: &'static _ = AtomBox::new_static(50);
@@ -356,7 +355,6 @@ mod test {
         handle2.join().unwrap();
     }
 
-    #[cfg(not(loom))]
     #[test]
     fn single_thread_retire() {
         let atom_box = AtomBox::new(20);
@@ -384,15 +382,12 @@ mod test {
 
     #[test]
     fn drop_test() {
-        let test_domain: &'static domain::Domain<1> = Box::leak(Box::new(domain::Domain::new(
-            domain::ReclaimStrategy::Eager,
-        )));
         let drop_count = AtomicUsize::new(0);
         let value = DropTester {
             drop_count: &drop_count,
             value: 20,
         };
-        let atom_box = AtomBox::new_with_domain(value, test_domain);
+        let atom_box = AtomBox::new_with_domain(value, &TEST_DOMAIN);
 
         let value = atom_box.load();
         assert_eq!(drop_count.load(Ordering::Acquire), 0);
@@ -430,9 +425,6 @@ mod test {
 
     #[test]
     fn swap_with_gaurd_test() {
-        let test_domain: &'static domain::Domain<1> = Box::leak(Box::new(domain::Domain::new(
-            domain::ReclaimStrategy::Eager,
-        )));
         let drop_count = AtomicUsize::new(0);
         let drop_count_for_placeholder = AtomicUsize::new(0);
         let value1 = DropTester {
@@ -443,8 +435,8 @@ mod test {
             drop_count: &drop_count,
             value: 20,
         };
-        let atom_box1 = AtomBox::new_with_domain(value1, test_domain);
-        let atom_box2 = AtomBox::new_with_domain(value2, test_domain);
+        let atom_box1 = AtomBox::new_with_domain(value1, &TEST_DOMAIN);
+        let atom_box2 = AtomBox::new_with_domain(value2, &TEST_DOMAIN);
 
         {
             // Immediately retire the original value

@@ -59,7 +59,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     }
 
     #[cfg(loom)]
-    pub(crate) fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+    pub fn new(reclaim_strategy: ReclaimStrategy) -> Self {
         Self {
             hazard_ptrs: LockFreeList::new(),
             retired: LockFreeList::new(),
