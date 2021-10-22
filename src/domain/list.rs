@@ -118,7 +118,10 @@ mod test {
         );
         let node: &Node<usize> = unsafe { &*node_ptr };
         assert_eq!(node.value, 1, "Value of item in node should be 1");
-        assert!(node.next.load(Ordering::Acquire).is_null());
+        assert!(
+            node.next.load(Ordering::Acquire).is_null(),
+            "The next pointer should be null"
+        );
     }
 
     #[test]
@@ -149,7 +152,10 @@ mod test {
             values.push(node.value);
             node_ptr = node.next.load(Ordering::Acquire);
         }
-        assert_eq!(values, [2, 2, 2, 1, 1, 1, 1]);
+        assert_eq!(
+            values, [2, 2, 2, 1, 1, 1, 1],
+            "The list should contain all the values from pushed to it from list2 and the original values from list 1"
+        );
         // To avoid dropping the nodes which we moved from list2 to list1
         std::mem::forget(list2);
     }

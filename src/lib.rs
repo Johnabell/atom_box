@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::sync::{AtomicPtr, Ordering};
 use std::ops::Deref;
 
@@ -9,6 +8,7 @@ mod sync;
 use crate::domain::Domain;
 use hazard_ptr::HazPtr;
 
+#[cfg(not(loom))]
 const SHARED_DOMAIN_ID: usize = 0;
 
 #[cfg(not(loom))]
@@ -260,7 +260,6 @@ impl<T, const DOMAIN_ID: usize> Deref for HazardStoreGuard<'_, T, DOMAIN_ID> {
         // The pointer is protected by the hazard pointer so will not have been droped
         // The pointer was created via a Box so is aligned and there are no mutable references
         // since we do not give any out.
-        //
         unsafe { self.ptr.as_ref().expect("Non null") }
     }
 }
@@ -282,6 +281,9 @@ impl<T, const DOMAIN_ID: usize> Drop for HazardStoreGuard<'_, T, DOMAIN_ID> {
 
 pub struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
+    // TODO: Can we remove this reference to the domain and still associate the Guard with its
+    // lifetime?
+    #[allow(dead_code)]
     domain: &'domain Domain<DOMAIN_ID>,
     haz_ptr: Option<&'domain HazPtr>,
 }
@@ -303,7 +305,6 @@ impl<T, const DOMAIN_ID: usize> Deref for HazardLoadGuard<'_, T, DOMAIN_ID> {
         // The pointer is protected by the hazard pointer so will not have been droped
         // The pointer was created via a Box so is aligned and there are no mutable references
         // since we do not give any out.
-        //
         unsafe { self.ptr.as_ref().expect("Non null") }
     }
 }
@@ -340,16 +341,25 @@ mod test {
         let atom_box: &'static _ = AtomBox::new_static(50);
 
         let value = atom_box.load();
-        assert_eq!(*value, 50);
+        assert_eq!(
+            *value, 50,
+            "We are able to get the original value by loading it"
+        );
         let handle1 = std::thread::spawn(move || {
             let h_box = atom_box;
             let value = h_box.load();
-            assert_eq!(*value, 50);
+            assert_eq!(
+                *value, 50,
+                "The value should be accessible in multiple threads"
+            );
         });
         let handle2 = std::thread::spawn(move || {
             let h_box = atom_box;
             let value = h_box.load();
-            assert_eq!(*value, 50);
+            assert_eq!(
+                *value, 50,
+                "The value should be accessible in multiple threads"
+            );
         });
         handle1.join().unwrap();
         handle2.join().unwrap();
@@ -360,24 +370,37 @@ mod test {
         let atom_box = AtomBox::new(20);
 
         let value = atom_box.load();
-        assert_eq!(*value, 20);
+        assert_eq!(
+            *value, 20,
+            "The correct values is returned when dereferencing"
+        );
         assert_eq!(
             value.ptr,
-            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire)
+            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire),
+            "The hazard pointer is protecting the correct pointer"
         );
 
         {
             // Immediately retire the original value
             let guard = atom_box.swap(30);
-            assert_eq!(guard.ptr, value.ptr);
+            assert_eq!(
+                guard.ptr, value.ptr,
+                "The guard returned after swap contains a pointer to the old value"
+            );
             let new_value = atom_box.load();
-            assert_eq!(*new_value, 30);
+            assert_eq!(*new_value, 30, "The new value has been set correctly");
         }
-        assert_eq!(*value, 20);
+        assert_eq!(
+            *value, 20,
+            "We are still able to access the old value as a result of the original load"
+        );
         drop(value);
         let _ = atom_box.swap(40);
         let final_value = atom_box.load();
-        assert_eq!(*final_value, 40);
+        assert_eq!(
+            *final_value, 40,
+            "When we load again we get a handle to the latest value"
+        );
     }
 
     #[test]
@@ -390,11 +413,16 @@ mod test {
         let atom_box = AtomBox::new_with_domain(value, &TEST_DOMAIN);
 
         let value = atom_box.load();
-        assert_eq!(drop_count.load(Ordering::Acquire), 0);
-        assert_eq!(**value, 20);
+        assert_eq!(
+            drop_count.load(Ordering::Acquire),
+            0,
+            "No values have been dropped yet"
+        );
+        assert_eq!(**value, 20, "The correct value is returned via load");
         assert_eq!(
             value.ptr as *mut usize,
-            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire)
+            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire),
+            "The value is protected by the hazard pointer"
         );
 
         {
@@ -403,24 +431,31 @@ mod test {
                 drop_count: &drop_count,
                 value: 30,
             });
-            assert_eq!(guard.ptr, value.ptr);
+            assert_eq!(guard.ptr, value.ptr, "When we swap the value we get back a guard that contains a pointer to the old value");
             let new_value = atom_box.load();
-            assert_eq!(**new_value, 30);
+            assert_eq!(
+                **new_value, 30,
+                "When we derefence the load, we get back a reference to the new value"
+            );
         }
         assert_eq!(
             drop_count.load(Ordering::Acquire),
             0,
             "Value should not be dropped while there is an active reference to it"
         );
-        assert_eq!(**value, 20);
+        assert_eq!(**value, 20, "We are still able to access the original value since we have been holding a load guard");
         drop(value);
         let _ = atom_box.swap(DropTester {
             drop_count: &drop_count,
             value: 40,
         });
         let final_value = atom_box.load();
-        assert_eq!(**final_value, 40);
-        assert_eq!(drop_count.load(Ordering::SeqCst), 2);
+        assert_eq!(**final_value, 40, "The value has been updated");
+        assert_eq!(
+            drop_count.load(Ordering::SeqCst),
+            2,
+            "Both of the old values should now be dropped"
+        );
     }
 
     #[test]
@@ -448,8 +483,14 @@ mod test {
             let _ = atom_box1.swap_with_guarded_value(guard2);
             let new_value1 = atom_box1.load();
             let new_value2 = atom_box2.load();
-            assert_eq!(**new_value1, 20);
-            assert_eq!(**new_value2, 10);
+            assert_eq!(
+                **new_value1, 20,
+                "The values in the boxes should have been swapped"
+            );
+            assert_eq!(
+                **new_value2, 10,
+                "The values in the boxes should have been swapped"
+            );
         }
         assert_eq!(
             drop_count_for_placeholder.load(Ordering::Acquire),
