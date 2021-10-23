@@ -3,6 +3,7 @@ use super::HazPtr;
 mod list;
 mod reclaim_strategy;
 
+use crate::conditional_const;
 use crate::sync::Ordering;
 use list::{LockFreeList, Node};
 pub use reclaim_strategy::ReclaimStrategy;
@@ -41,31 +42,26 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
         Self::_new(ReclaimStrategy::default())
     }
 
-    #[cfg(not(loom))]
-    pub const fn new(reclaim_strategy: ReclaimStrategy) -> Self {
-        // Find away to statically enforce this
-        #[cfg(nightly)]
-        assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
-        Self::_new(reclaim_strategy)
-    }
-
-    #[cfg(not(loom))]
-    pub(crate) const fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
-        Self {
-            hazard_ptrs: LockFreeList::new(),
-            retired: LockFreeList::new(),
-            reclaim_strategy,
+    conditional_const!(
+        pub,
+        fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+            // Find away to statically enforce this
+            #[cfg(nightly)]
+            assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
+            Self::_new(reclaim_strategy)
         }
-    }
+    );
 
-    #[cfg(loom)]
-    pub fn new(reclaim_strategy: ReclaimStrategy) -> Self {
-        Self {
-            hazard_ptrs: LockFreeList::new(),
-            retired: LockFreeList::new(),
-            reclaim_strategy,
+    conditional_const!(
+        pub(crate),
+        fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
+            Self {
+                hazard_ptrs: LockFreeList::new(),
+                retired: LockFreeList::new(),
+                reclaim_strategy,
+            }
         }
-    }
+    );
 
     pub(crate) fn acquire_haz_ptr(&self) -> &HazPtr {
         if let Some(haz_ptr) = self.try_acquire_haz_ptr() {

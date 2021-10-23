@@ -1,3 +1,4 @@
+use crate::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 
 #[derive(Debug)]
@@ -13,21 +14,15 @@ pub(super) struct Node<T> {
 }
 
 impl<T> LockFreeList<T> {
-    #[cfg(not(loom))]
-    pub(super) const fn new() -> Self {
-        Self {
-            head: AtomicPtr::new(std::ptr::null_mut()),
-            count: AtomicIsize::new(0),
+    conditional_const!(
+        pub,
+        fn new() -> Self {
+            Self {
+                head: AtomicPtr::new(std::ptr::null_mut()),
+                count: AtomicIsize::new(0),
+            }
         }
-    }
-
-    #[cfg(loom)]
-    pub(super) fn new() -> Self {
-        Self {
-            head: AtomicPtr::new(std::ptr::null_mut()),
-            count: AtomicIsize::new(0),
-        }
-    }
+    );
 
     pub(super) fn push(&self, value: T) -> *mut Node<T> {
         let node = Box::into_raw(Box::new(Node {

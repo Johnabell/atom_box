@@ -14,6 +14,19 @@ const SHARED_DOMAIN_ID: usize = 0;
 #[cfg(not(loom))]
 static SHARED_DOMAIN: Domain<SHARED_DOMAIN_ID> = Domain::default();
 
+// The loom atomics do not have const constructors. So we cannot use them in const functions.
+// This macro enables us to create a const function in normal compilation and a non const
+// function when compiling for loom.
+#[macro_export]
+macro_rules! conditional_const {
+    ($visibility:vis, $( $token:tt )*) => {
+        #[cfg(not(loom))]
+        $visibility const $( $token )*
+        #[cfg(loom)]
+        $visibility $( $token )*
+    };
+}
+
 #[derive(Debug)]
 pub struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     ptr: AtomicPtr<T>,

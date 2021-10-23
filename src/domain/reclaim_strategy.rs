@@ -1,3 +1,4 @@
+use crate::conditional_const;
 use crate::sync::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -21,15 +22,12 @@ impl ReclaimStrategy {
         }
     }
 
-    #[cfg(loom)]
-    pub fn default() -> Self {
-        Self::TimedCapped(TimeCappedSettings::default())
-    }
-
-    #[cfg(not(loom))]
-    pub const fn default() -> Self {
-        Self::TimedCapped(TimeCappedSettings::default())
-    }
+    conditional_const!(
+        pub,
+        fn default() -> Self {
+            Self::TimedCapped(TimeCappedSettings::default())
+        }
+    );
 }
 
 #[derive(Debug)]
@@ -41,33 +39,21 @@ pub struct TimeCappedSettings {
 }
 
 impl TimeCappedSettings {
-    #[cfg(not(loom))]
-    pub const fn new(
-        sync_timeout: Duration,
-        retired_threshold: isize,
-        hazard_pointer_multiplier: isize,
-    ) -> Self {
-        Self {
-            last_sync_time: AtomicU64::new(0),
-            sync_timeout,
-            retired_threshold,
-            hazard_pointer_multiplier,
+    conditional_const!(
+        pub,
+        fn new(
+            sync_timeout: Duration,
+            retired_threshold: isize,
+            hazard_pointer_multiplier: isize,
+        ) -> Self {
+            Self {
+                last_sync_time: AtomicU64::new(0),
+                sync_timeout,
+                retired_threshold,
+                hazard_pointer_multiplier,
+            }
         }
-    }
-
-    #[cfg(loom)]
-    pub fn new(
-        sync_timeout: Duration,
-        retired_threshold: isize,
-        hazard_pointer_multiplier: isize,
-    ) -> Self {
-        Self {
-            last_sync_time: AtomicU64::new(0),
-            sync_timeout,
-            retired_threshold,
-            hazard_pointer_multiplier,
-        }
-    }
+    );
 
     fn should_reclaim(&self, hazard_pointer_count: isize, retired_count: isize) -> bool {
         if retired_count >= self.retired_threshold
@@ -102,21 +88,14 @@ impl TimeCappedSettings {
                 .is_ok()
     }
 
-    #[cfg(not(loom))]
-    const fn default() -> Self {
-        Self::new(
-            DEFAULT_SYNC_THRESHOLD,
-            DEFAULT_RETIERED_THRESHOLD,
-            DEFAULT_HAZARD_POINTER_MULTIPLIER,
-        )
-    }
-
-    #[cfg(loom)]
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_SYNC_THRESHOLD,
-            DEFAULT_RETIERED_THRESHOLD,
-            DEFAULT_HAZARD_POINTER_MULTIPLIER,
-        )
-    }
+    conditional_const!(
+        pub(self),
+        fn default() -> Self {
+            Self::new(
+                DEFAULT_SYNC_THRESHOLD,
+                DEFAULT_RETIERED_THRESHOLD,
+                DEFAULT_HAZARD_POINTER_MULTIPLIER,
+            )
+        }
+    );
 }
