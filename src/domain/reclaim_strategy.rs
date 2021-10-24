@@ -17,8 +17,8 @@ pub enum ReclaimStrategy {
     Eager,
 
     /// Items will be reclaimed both periodically, and when the number of retired items exceeds
-    /// certain threasholds.
-    TimedCapped(TimeCappedSettings),
+    /// certain thresholds.
+    TimedCapped(TimedCappedSettings),
 }
 
 impl ReclaimStrategy {
@@ -32,41 +32,41 @@ impl ReclaimStrategy {
     }
 
     conditional_const!(
-        "Creates the default reclaimation strategy for a domain",
+        "Creates the default reclamation strategy for a domain",
         pub,
         fn default() -> Self {
-            Self::TimedCapped(TimeCappedSettings::default())
+            Self::TimedCapped(TimedCappedSettings::default())
         }
     );
 }
 
-/// The particulate settings of the `TimeCapped` reclaimation strategy.
+/// The particulate settings of the `TimedCapped` reclamation strategy.
 #[derive(Debug)]
-pub struct TimeCappedSettings {
+pub struct TimedCappedSettings {
     last_sync_time: AtomicU64,
     sync_timeout: Duration,
     hazard_pointer_multiplier: isize,
     retired_threshold: isize,
 }
 
-impl TimeCappedSettings {
+impl TimedCappedSettings {
     conditional_const!(
-        "Creates a new `TimeCappedSettings`.
+        "Creates a new `TimedCappedSettings`.
 
 # Arguments
 
 * `sync_timeout` - The duration between successive reclaim attempts
 * `retired_threshold` - The threshold after which a retired items should be reclaimed
 * 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of hazard
-pointers multiplied by `hazard_pointer_multiplier` then an atempt will be made to reclaim
+pointers multiplied by `hazard_pointer_multiplier` then an attempt will be made to reclaim
 the retired items.
 
 # Example
 
 ```
-use atom_box::domain::{ReclaimStrategy, TimeCappedSettings};
+use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
 
-const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimeCappedSettings::new(
+const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new(
     std::time::Duration::from_nanos(5000000000),
     1000,
     3,
@@ -122,7 +122,7 @@ const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimeCappe
     }
 
     conditional_const!(
-"Creates the default `TimeCappedSettings`.
+"Creates the default `TimedCappedSettings`.
 
 This is not an implementation of `Default` since it is a const function.",
         pub(self),

@@ -52,7 +52,7 @@ impl<T> LockFreeList<T> {
     ) -> *mut Node<T> {
         let mut head_ptr = self.head.load(Ordering::Acquire);
         loop {
-            // Safety: we currently had exclused access to the node we have just created
+            // Safety: we currently had exclusive access to the node we have just created
             tail_ptr.store(head_ptr, Ordering::Release);
             match self.head.compare_exchange_weak(
                 head_ptr,

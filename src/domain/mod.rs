@@ -1,18 +1,30 @@
 //! Domain
 //!
-//! A domain is a holder for hazard pointers and retired objects awaiting reclaimation.
+//! A domain is a holder for hazard pointers and retired objects awaiting reclamation.
 //!
 //! Generally, users of this library will not need to create their own domain and will simply be
 //! able to make use of the global shared domain. However, for particular use cases (for example,
-//! specifying the precise reclaimation strategy), custom domains might be apropriate.
+//! specifying the precise reclamation strategy), custom domains might be appropriate.
 //!
-//! When using multiple domains in a programe care must be taken to ensure that a value from an
+//! When using multiple domains in a programme care must be taken to ensure that a value from an
 //! `AtomBox` associated with one `Domain` is not stored in a `AtomBox` associated with a different
-//! `Domain`. To help alleviate this problem, domain is paramaterised by an interger ID as a const generic.
+//! `Domain`. To help alleviate this problem, domain is parameterised by an integer ID as a const generic.
 //! If used appropriately, this can provide static verification that values of one `Domain` are not stored
 //! in another.
 //!
 //! A runtime attempt to store a value from one `Domain` in another will result in a `panic`.
+//!
+//! # Example
+//!
+//! Creating an `AtomBox` using a custom domain.
+//! ```
+//! use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+//!
+//! const CUSTOM_DOMAIN_ID: usize = 42;
+//! static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
+//!
+//! let atom_box = AtomBox::new_with_domain("Hello World", &CUSTOM_DOMAIN);
+//! ```
 use super::HazPtr;
 
 mod list;
@@ -21,7 +33,7 @@ mod reclaim_strategy;
 use crate::macros::conditional_const;
 use crate::sync::Ordering;
 use list::{LockFreeList, Node};
-pub use reclaim_strategy::{ReclaimStrategy, TimeCappedSettings};
+pub use reclaim_strategy::{ReclaimStrategy, TimedCappedSettings};
 use std::collections::HashSet;
 
 pub(crate) trait Retirable {}
@@ -175,16 +187,16 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         let mut tail_ptr = None;
         let mut reclaimed = 0;
         let mut number_remaining = 0;
-        println!("Begining reclaim");
+        println!("Beginning reclaim");
         while !node_ptr.is_null() {
             // # Safety
             //
-            // We have exclusive access to the list of reired pointers.
+            // We have exclusive access to the list of retired pointers.
             let node = unsafe { &*node_ptr };
             let next = node.next.load(Ordering::Relaxed);
             if guarded_ptrs.contains(&(node.value.ptr as *const usize)) {
                 // The pointer is still guarded keep in the retired list
-                println!("Pointer gaurded");
+                println!("Pointer guarded");
                 node.next.store(still_retired, Ordering::Relaxed);
                 still_retired = node_ptr;
                 if tail_ptr.is_none() {
@@ -193,7 +205,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
                 number_remaining += 1;
             } else {
                 println!("Pointer being freed");
-                // Dealocate the retired item
+                // Deallocate the retired item
                 //
                 // # Safety
                 //
@@ -235,7 +247,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         while !node_ptr.is_null() {
             // # Safety
             //
-            // Hazard pointers are only dealocated when the domain is droped
+            // Hazard pointers are only deallocated when the domain is dropped
             let node = unsafe { &*node_ptr };
             if node.value.active.load(Ordering::Acquire) {
                 guarded_ptrs.insert(node.value.ptr.load(Ordering::Acquire) as *const usize);

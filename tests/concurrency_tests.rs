@@ -40,7 +40,7 @@ mod loom_test {
                 for i in 1..=ITERATIONS {
                     let guard1 = atom_box1.swap(Value(i));
                     let value1 = (*guard1).0;
-                    let guard2 = atom_box2.swap_with_guarded_value(guard1);
+                    let guard2 = atom_box2.swap_from_guard(guard1);
                     assert!(
                         (*guard2).0 <= value1,
                         "Value in first box should be greater than or equal to value in second box"

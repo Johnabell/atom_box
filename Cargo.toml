@@ -2,8 +2,16 @@
 name = "atom_box"
 version = "0.1.0"
 edition = "2018"
+authors = ["John Bell <bell.john.andrew@gmail.com>"]
 
-[dependencies]
+license = "MIT OR Apache-2.0"
+
+readme = "README.md"
+description = "A safe idiomatic Rust implementation of an Atmoic Box using hazard pointers"
+repository = "https://github.com/Johnabell/atom_box.git"
+
+keywords = ["atomic", "harard", "pointers", "AtomicBox"]
+categories = ["concurrency", "rust-patterns", "memory-management"]
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.5"
