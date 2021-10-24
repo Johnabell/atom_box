@@ -1,3 +1,12 @@
+//! # Atom Box
+//!
+//! This crate provides a safe idomatic Rust API for an Atomic Box with safe memory
+//! reclamation when used in multi-threaded concurrent lock-free data structures.
+//!
+//! Under the covers it uses Hazard Pointer to ensure memory is only reclaimed when all references
+//! are dropped.
+
+#![warn(missing_docs)]
 use crate::sync::{AtomicPtr, Ordering};
 use std::ops::Deref;
 
@@ -14,19 +23,62 @@ const SHARED_DOMAIN_ID: usize = 0;
 #[cfg(not(loom))]
 static SHARED_DOMAIN: Domain<SHARED_DOMAIN_ID> = Domain::default();
 
-// The loom atomics do not have const constructors. So we cannot use them in const functions.
-// This macro enables us to create a const function in normal compilation and a non const
-// function when compiling for loom.
-#[macro_export]
-macro_rules! conditional_const {
-    ($visibility:vis, $( $token:tt )*) => {
-        #[cfg(not(loom))]
-        $visibility const $( $token )*
-        #[cfg(loom)]
-        $visibility $( $token )*
-    };
+mod macros {
+    // The loom atomics do not have const constructors. So we cannot use them in const functions.
+    // This macro enables us to create a const function in normal compilation and a non const
+    // function when compiling for loom.
+    macro_rules! conditional_const {
+        ($( $doc_comment:expr )?, $visibility:vis, $( $token:tt )*) => {
+            $( #[doc = $doc_comment] )?
+            #[cfg(not(loom))]
+            $visibility const $( $token )*
+            #[cfg(loom)]
+            $visibility $( $token )*
+        };
+    }
+    pub(crate) use conditional_const;
 }
 
+/// A box which can safely be shared between threads and atomically updated.
+///
+/// Memory will be safely reclaimed after all threads have dropped their references to any give
+/// value.
+///
+/// # Example
+///
+/// ```
+/// use atom_box::AtomBox;
+/// use std::thread;
+///
+/// const ITERATIONS: usize = 100000;
+///
+/// let atom_box1: &'static _ = AtomBox::new_static(0);
+/// let atom_box2: &'static _ = AtomBox::new_static(0);
+///
+/// let handle1 = thread::spawn(move || {
+///     let mut current_value = 0;
+///     for _ in 1..=ITERATIONS {
+///         let new_value = atom_box1.load();
+///         assert!(*new_value >= current_value, "Value should not decrease");
+///         current_value = *new_value;
+///     }
+/// });
+///
+/// let handle2 = thread::spawn(move || {
+///     for i in 1..=ITERATIONS {
+///         let guard1 = atom_box1.swap(i);
+///         let value1 = *guard1;
+///         let guard2 = atom_box2.swap_with_guarded_value(guard1);
+///         assert!(
+///             *guard2 <= value1,
+///             "Value in first box should be greater than or equal to value in second box"
+///         );
+///     }
+/// });
+///
+/// handle1.join().unwrap();
+/// handle2.join().unwrap();
+/// ```
 #[derive(Debug)]
 pub struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
     ptr: AtomicPtr<T>,
@@ -35,6 +87,22 @@ pub struct AtomBox<'domain, T, const DOMAIN_ID: usize> {
 
 #[cfg(not(loom))]
 impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
+    /// Creates a new `AtomBox` associated with the shared (global) domain.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use atom_box::AtomBox;
+    ///
+    /// let atom_box = AtomBox::new("Hello");
+    ///
+    /// let value = atom_box.load();
+    /// assert_eq!(*value, "Hello");
+    ///
+    /// atom_box.store("World");
+    /// let value = atom_box.load();
+    /// assert_eq!(*value, "World");
+    /// ```
     pub fn new(value: T) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self {
@@ -43,18 +111,68 @@ impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
         }
     }
 
+    /// Creates a new `AtomBox` with a static lifetime.
+    ///
+    /// A convenience constructor for `Box::leak(Box::new(Self::new(value)))`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use atom_box::AtomBox;
+    /// let atom_box: &'static _ = AtomBox::new_static(50);
+    /// let value = atom_box.load();
+    ///
+    /// assert_eq!(
+    ///     *value, 50,
+    ///     "We are able to get the original value by loading it"
+    /// );
+    /// let handle1 = std::thread::spawn(move || {
+    ///     let h_box = atom_box;
+    ///     let value = h_box.load();
+    ///     assert_eq!(
+    ///         *value, 50,
+    ///         "The value should be accessible in multiple threads"
+    ///     );
+    /// });
+    /// let handle2 = std::thread::spawn(move || {
+    ///     let h_box = atom_box;
+    ///     let value = h_box.load();
+    ///     assert_eq!(
+    ///         *value, 50,
+    ///         "The value should be accessible in multiple threads"
+    ///     );
+    /// });
+    /// handle1.join().unwrap();
+    /// handle2.join().unwrap();
+    /// ```
     pub fn new_static(value: T) -> &'static mut Self {
         Box::leak(Box::new(Self::new(value)))
     }
 }
 
 impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
+    /// Creates a new `AtomBox` and assoicates it with the given domain.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use atom_box::{AtomBox, domain::Domain, domain::ReclaimStrategy};
+    ///
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
+    ///
+    /// let atom_box = AtomBox::new_with_domain("Hello World", &CUSTOM_DOMAIN);
+    /// assert_eq!(*atom_box.load(), "Hello World");
+    /// ```
     pub fn new_with_domain(value: T, domain: &'domain Domain<DOMAIN_ID>) -> Self {
         let ptr = AtomicPtr::new(Box::into_raw(Box::new(value)));
         Self { ptr, domain }
     }
 
-    pub fn load(&self) -> HazardLoadGuard<'domain, T, DOMAIN_ID> {
+    /// Loads the value stored in the `AtomBox`.
+    ///
+    /// Retuns a `LoadGuard` which can be dereferenced into the value.
+    pub fn load(&self) -> LoadGuard<'domain, T, DOMAIN_ID> {
         let haz_ptr = self.domain.acquire_haz_ptr();
         // load pointer
         let mut original_ptr = self.ptr.load(Ordering::Relaxed);
@@ -74,35 +192,54 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             haz_ptr.reset();
             original_ptr = current_ptr;
         };
-        HazardLoadGuard {
+        LoadGuard {
             ptr,
             domain: self.domain,
             haz_ptr: Some(haz_ptr),
         }
     }
 
+    /// Stores a new value in the `AtomBox`
     pub fn store(&self, value: T) {
         let _ = self.swap(value);
     }
 
-    pub fn swap(&self, new_value: T) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
+    /// Stores the value protected by the `StoreGuard` in the `AtomBox`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard is associated with a different domain.
+    pub fn store_with_guarded_value(&self, value: StoreGuard<'domain, T, DOMAIN_ID>) {
+        let _ = self.swap_with_guarded_value(value);
+    }
+
+    /// Stores the value into the `AtomBox` and returns a `StoreGuard` which dereferences into the
+    /// previous value.
+    ///
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
+    pub fn swap(&self, new_value: T) -> StoreGuard<'domain, T, DOMAIN_ID> {
         let new_ptr = Box::into_raw(Box::new(new_value));
         let old_ptr = self.ptr.swap(new_ptr, Ordering::AcqRel);
-        HazardStoreGuard {
+        StoreGuard {
             ptr: old_ptr,
             domain: self.domain,
         }
     }
 
-    /// Store a new value in the guarded pointer.
+    /// Stores the value into the `AtomBox` and returns a `StoreGuard` which dereferences into the
+    /// previous value.
     ///
-    /// # Panic
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
     ///
-    /// Function panics if a guarded object from another domain is passed to this function.
+    /// # Panics
+    ///
+    /// Panics if the guard is associated with a different domain.
     pub fn swap_with_guarded_value(
         &self,
-        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
-    ) -> HazardStoreGuard<'domain, T, DOMAIN_ID> {
+        new_value: StoreGuard<'domain, T, DOMAIN_ID>,
+    ) -> StoreGuard<'domain, T, DOMAIN_ID> {
         assert!(
             std::ptr::eq(new_value.domain, self.domain),
             "Cannot use guarded value from different domain"
@@ -111,18 +248,26 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         let new_ptr = new_value.ptr;
         std::mem::forget(new_value);
         let old_ptr = self.ptr.swap(new_ptr as *mut T, Ordering::AcqRel);
-        HazardStoreGuard {
+        StoreGuard {
             ptr: old_ptr,
             domain: self.domain,
         }
     }
 
+    /// Stores a value into the `AtomBox` if its current value equals `current_value`.
+    ///
+    /// The return value is a result indicating whether the new value was written.
+    /// On success, this value is guaranteed to be equal to `current_value` and the return value is
+    /// a StoreGuard which derefernces to the old value.
+    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
+    ///
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
     pub fn compare_exchange(
         &self,
-        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
+        current_value: LoadGuard<'domain, T, DOMAIN_ID>,
         new_value: T,
-    ) -> Result<HazardStoreGuard<'domain, T, DOMAIN_ID>, HazardLoadGuard<'domain, T, DOMAIN_ID>>
-    {
+    ) -> Result<StoreGuard<'domain, T, DOMAIN_ID>, LoadGuard<'domain, T, DOMAIN_ID>> {
         let new_ptr = Box::into_raw(Box::new(new_value));
         match self.ptr.compare_exchange(
             current_value.ptr as *mut T,
@@ -130,11 +275,11 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             Ordering::AcqRel,
             Ordering::Acquire,
         ) {
-            Ok(ptr) => Ok(HazardStoreGuard {
+            Ok(ptr) => Ok(StoreGuard {
                 ptr,
                 domain: self.domain,
             }),
-            Err(ptr) => Err(HazardLoadGuard {
+            Err(ptr) => Err(LoadGuard {
                 ptr,
                 domain: self.domain,
                 haz_ptr: None,
@@ -142,20 +287,28 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         }
     }
 
-    /// Store a new value in the guarded pointer if its value matchs `current_value`.
+    /// Stores a value into the `AtomBox` if its current value equals `current_value`.
     ///
-    /// # Panic
+    /// The return value is a result indicating whether the new value was written.
+    /// On success, this value is guaranteed to be equal to `current_value` and the return value is
+    /// a StoreGuard which derefernces to the old value.
+    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
     ///
-    /// Function panics if a guarded object from another domain is passed to this function.
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard is associated with a different domain.
     pub fn compare_exchange_with_guard(
         &self,
-        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
-        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        current_value: LoadGuard<'domain, T, DOMAIN_ID>,
+        new_value: StoreGuard<'domain, T, DOMAIN_ID>,
     ) -> Result<
-        HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        StoreGuard<'domain, T, DOMAIN_ID>,
         (
-            HazardLoadGuard<'domain, T, DOMAIN_ID>,
-            HazardStoreGuard<'domain, T, DOMAIN_ID>,
+            LoadGuard<'domain, T, DOMAIN_ID>,
+            StoreGuard<'domain, T, DOMAIN_ID>,
         ),
     > {
         assert!(
@@ -172,13 +325,13 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         ) {
             Ok(ptr) => {
                 std::mem::forget(new_value);
-                Ok(HazardStoreGuard {
+                Ok(StoreGuard {
                     ptr,
                     domain: self.domain,
                 })
             }
             Err(ptr) => Err((
-                HazardLoadGuard {
+                LoadGuard {
                     ptr,
                     domain: self.domain,
                     haz_ptr: None,
@@ -188,12 +341,20 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         }
     }
 
+    /// Stores a value into the `AtomBox` if the current value is the same as the `current` value.
+    ///
+    /// Unlike [`AtomBox::compare_exchange`], this function is allowed to spuriously fail even when the
+    /// comparison succeeds, which can result in more efficient code on some platforms. The
+    /// return value is a result indicating whether the new value was written and containing the
+    /// previous value.
+    ///
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
     pub fn compare_exchange_weak(
         &self,
-        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
+        current_value: LoadGuard<'domain, T, DOMAIN_ID>,
         new_value: T,
-    ) -> Result<HazardStoreGuard<'domain, T, DOMAIN_ID>, HazardLoadGuard<'domain, T, DOMAIN_ID>>
-    {
+    ) -> Result<StoreGuard<'domain, T, DOMAIN_ID>, LoadGuard<'domain, T, DOMAIN_ID>> {
         let new_ptr = Box::into_raw(Box::new(new_value));
         match self.ptr.compare_exchange_weak(
             current_value.ptr as *mut T,
@@ -201,11 +362,11 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             Ordering::AcqRel,
             Ordering::Acquire,
         ) {
-            Ok(ptr) => Ok(HazardStoreGuard {
+            Ok(ptr) => Ok(StoreGuard {
                 ptr,
                 domain: self.domain,
             }),
-            Err(ptr) => Err(HazardLoadGuard {
+            Err(ptr) => Err(LoadGuard {
                 ptr,
                 domain: self.domain,
                 haz_ptr: None,
@@ -213,20 +374,28 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         }
     }
 
-    /// Store a new value in the guarded pointer if its value matchs `current_value`.
+    /// Stores a value into the `AtomBox` if the current value is the same as the `current` value.
     ///
-    /// # Panic
+    /// Unlike [`AtomBox::compare_exchange`], this function is allowed to spuriously fail even when the
+    /// comparison succeeds, which can result in more efficient code on some platforms. The
+    /// return value is a result indicating whether the new value was written and containing the
+    /// previous value.
     ///
-    /// Function panics if a guarded object from another domain is passed to this function.
+    /// **Note:** This method is only available on platforms that support atomic operations on
+    /// pointers.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard is associated with a different domain.
     pub fn compare_exchange_weak_with_guard(
         &self,
-        current_value: HazardLoadGuard<'domain, T, DOMAIN_ID>,
-        new_value: HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        current_value: LoadGuard<'domain, T, DOMAIN_ID>,
+        new_value: StoreGuard<'domain, T, DOMAIN_ID>,
     ) -> Result<
-        HazardStoreGuard<'domain, T, DOMAIN_ID>,
+        StoreGuard<'domain, T, DOMAIN_ID>,
         (
-            HazardLoadGuard<'domain, T, DOMAIN_ID>,
-            HazardStoreGuard<'domain, T, DOMAIN_ID>,
+            LoadGuard<'domain, T, DOMAIN_ID>,
+            StoreGuard<'domain, T, DOMAIN_ID>,
         ),
     > {
         assert!(
@@ -243,13 +412,13 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         ) {
             Ok(ptr) => {
                 std::mem::forget(new_value);
-                Ok(HazardStoreGuard {
+                Ok(StoreGuard {
                     ptr,
                     domain: self.domain,
                 })
             }
             Err(ptr) => Err((
-                HazardLoadGuard {
+                LoadGuard {
                     ptr,
                     domain: self.domain,
                     haz_ptr: None,
@@ -260,12 +429,18 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     }
 }
 
-pub struct HazardStoreGuard<'domain, T, const DOMAIN_ID: usize> {
+/// Contains a reference to a value that was previously contained in an `AtomBox`.
+///
+/// Returned from the store methods method on `AtomBox`. This value can be passed to the
+/// `with_gaurd` methods to store this value in an `AtomBox` associated with the same domain.
+///
+/// Dereferences to the value.
+pub struct StoreGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
     domain: &'domain Domain<DOMAIN_ID>,
 }
 
-impl<T, const DOMAIN_ID: usize> Deref for HazardStoreGuard<'_, T, DOMAIN_ID> {
+impl<T, const DOMAIN_ID: usize> Deref for StoreGuard<'_, T, DOMAIN_ID> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         // # Saftey
@@ -277,7 +452,7 @@ impl<T, const DOMAIN_ID: usize> Deref for HazardStoreGuard<'_, T, DOMAIN_ID> {
     }
 }
 
-impl<T, const DOMAIN_ID: usize> Drop for HazardStoreGuard<'_, T, DOMAIN_ID> {
+impl<T, const DOMAIN_ID: usize> Drop for StoreGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
         // # Safety
         //
@@ -292,7 +467,14 @@ impl<T, const DOMAIN_ID: usize> Drop for HazardStoreGuard<'_, T, DOMAIN_ID> {
     }
 }
 
-pub struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
+/// Contains a reference to a value that was stored in a `AtomBox`.
+///
+/// Returned as the result of calling [`AtomBox::load`].
+///
+/// The value is guaranteed not to be dropped before this guard is dropped.
+///
+/// Dereferences to the value.
+pub struct LoadGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
     // TODO: Can we remove this reference to the domain and still associate the Guard with its
     // lifetime?
@@ -301,7 +483,7 @@ pub struct HazardLoadGuard<'domain, T, const DOMAIN_ID: usize> {
     haz_ptr: Option<&'domain HazPtr>,
 }
 
-impl<T, const DOMAIN_ID: usize> Drop for HazardLoadGuard<'_, T, DOMAIN_ID> {
+impl<T, const DOMAIN_ID: usize> Drop for LoadGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
         if let Some(haz_ptr) = self.haz_ptr {
             haz_ptr.reset();
@@ -310,7 +492,7 @@ impl<T, const DOMAIN_ID: usize> Drop for HazardLoadGuard<'_, T, DOMAIN_ID> {
     }
 }
 
-impl<T, const DOMAIN_ID: usize> Deref for HazardLoadGuard<'_, T, DOMAIN_ID> {
+impl<T, const DOMAIN_ID: usize> Deref for LoadGuard<'_, T, DOMAIN_ID> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         // # Saftey
@@ -347,35 +529,6 @@ mod test {
         fn deref(&self) -> &Self::Target {
             &self.value
         }
-    }
-
-    #[test]
-    fn api_test() {
-        let atom_box: &'static _ = AtomBox::new_static(50);
-
-        let value = atom_box.load();
-        assert_eq!(
-            *value, 50,
-            "We are able to get the original value by loading it"
-        );
-        let handle1 = std::thread::spawn(move || {
-            let h_box = atom_box;
-            let value = h_box.load();
-            assert_eq!(
-                *value, 50,
-                "The value should be accessible in multiple threads"
-            );
-        });
-        let handle2 = std::thread::spawn(move || {
-            let h_box = atom_box;
-            let value = h_box.load();
-            assert_eq!(
-                *value, 50,
-                "The value should be accessible in multiple threads"
-            );
-        });
-        handle1.join().unwrap();
-        handle2.join().unwrap();
     }
 
     #[test]

@@ -1,12 +1,27 @@
+//! Domain
+//!
+//! A domain is a holder for hazard pointers and retired objects awaiting reclaimation.
+//!
+//! Generally, users of this library will not need to create their own domain and will simply be
+//! able to make use of the global shared domain. However, for particular use cases (for example,
+//! specifying the precise reclaimation strategy), custom domains might be apropriate.
+//!
+//! When using multiple domains in a programe care must be taken to ensure that a value from an
+//! `AtomBox` associated with one `Domain` is not stored in a `AtomBox` associated with a different
+//! `Domain`. To help alleviate this problem, domain is paramaterised by an interger ID as a const generic.
+//! If used appropriately, this can provide static verification that values of one `Domain` are not stored
+//! in another.
+//!
+//! A runtime attempt to store a value from one `Domain` in another will result in a `panic`.
 use super::HazPtr;
 
 mod list;
 mod reclaim_strategy;
 
-use crate::conditional_const;
+use crate::macros::conditional_const;
 use crate::sync::Ordering;
 use list::{LockFreeList, Node};
-pub use reclaim_strategy::ReclaimStrategy;
+pub use reclaim_strategy::{ReclaimStrategy, TimeCappedSettings};
 use std::collections::HashSet;
 
 pub(crate) trait Retirable {}
@@ -29,6 +44,13 @@ impl Retire {
     }
 }
 
+/// A holder of hazard pointers protecting the access to the values stored in all associated `AtomBox`s.
+///
+/// A domain is responsible for handing out hazard pointer to protect the access to the values
+/// stored in different `AtomBox`s.
+///
+/// The domain is also responsible for holding onto retired items until they can safely be
+/// reclaimed.
 #[derive(Debug)]
 pub struct Domain<const DOMAIN_ID: usize> {
     retired: LockFreeList<Retire>,
@@ -43,6 +65,19 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     }
 
     conditional_const!(
+        "Create a new `Domain` with provided `ReclaimStrategy`.
+
+# Example
+
+```
+use atom_box::domain::{Domain, ReclaimStrategy};
+
+const CUSTOM_DOMAIN_ID: usize = 42;
+static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
+```
+
+On nightly this will panic if the domain id is equal to the shared domain's id (0).
+",
         pub,
         fn new(reclaim_strategy: ReclaimStrategy) -> Self {
             // Find away to statically enforce this
@@ -53,6 +88,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     );
 
     conditional_const!(
+        "Internal function for creating a new `Domain`",
         pub(crate),
         fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
             Self {

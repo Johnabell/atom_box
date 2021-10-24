@@ -1,4 +1,4 @@
-use crate::conditional_const;
+use crate::macros::conditional_const;
 use crate::sync::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -6,9 +6,18 @@ const DEFAULT_SYNC_THRESHOLD: Duration = Duration::from_nanos(2000000000);
 const DEFAULT_RETIERED_THRESHOLD: isize = 1000;
 const DEFAULT_HAZARD_POINTER_MULTIPLIER: isize = 2;
 
+/// The strategy which should be used for reclaiming retired items in a `Domain`.
+///
+/// A `default` const constructor function is defined for this enum. It cannot implement `Default`
+/// since we would like the `default` constructor to be a const function.
 #[derive(Debug)]
 pub enum ReclaimStrategy {
+    /// Every time an item is retired the domain will try to reclaim any items which are not
+    /// currently being protected by a hazard pointer.
     Eager,
+
+    /// Items will be reclaimed both periodically, and when the number of retired items exceeds
+    /// certain threasholds.
     TimedCapped(TimeCappedSettings),
 }
 
@@ -23,6 +32,7 @@ impl ReclaimStrategy {
     }
 
     conditional_const!(
+        "Creates the default reclaimation strategy for a domain",
         pub,
         fn default() -> Self {
             Self::TimedCapped(TimeCappedSettings::default())
@@ -30,6 +40,7 @@ impl ReclaimStrategy {
     );
 }
 
+/// The particulate settings of the `TimeCapped` reclaimation strategy.
 #[derive(Debug)]
 pub struct TimeCappedSettings {
     last_sync_time: AtomicU64,
@@ -40,6 +51,28 @@ pub struct TimeCappedSettings {
 
 impl TimeCappedSettings {
     conditional_const!(
+        "Creates a new `TimeCappedSettings`.
+
+# Arguments
+
+* `sync_timeout` - The duration between successive reclaim attempts
+* `retired_threshold` - The threshold after which a retired items should be reclaimed
+* 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of hazard
+pointers multiplied by `hazard_pointer_multiplier` then an atempt will be made to reclaim
+the retired items.
+
+# Example
+
+```
+use atom_box::domain::{ReclaimStrategy, TimeCappedSettings};
+
+const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimeCappedSettings::new(
+    std::time::Duration::from_nanos(5000000000),
+    1000,
+    3,
+));
+```
+",
         pub,
         fn new(
             sync_timeout: Duration,
@@ -89,6 +122,9 @@ impl TimeCappedSettings {
     }
 
     conditional_const!(
+"Creates the default `TimeCappedSettings`.
+
+This is not an implementation of `Default` since it is a const function.",
         pub(self),
         fn default() -> Self {
             Self::new(

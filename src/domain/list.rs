@@ -1,4 +1,4 @@
-use crate::conditional_const;
+use crate::macros::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 
 #[derive(Debug)]
@@ -15,6 +15,7 @@ pub(super) struct Node<T> {
 
 impl<T> LockFreeList<T> {
     conditional_const!(
+        "Creates a new `LockFreeList`",
         pub,
         fn new() -> Self {
             Self {
