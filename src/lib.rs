@@ -12,27 +12,30 @@
 //!
 //! ```
 //! use atom_box::AtomBox;
-//! use std::thread;
+//! use std::{sync::Arc, thread};
 //!
 //! const ITERATIONS: usize = 100000;
 //!
-//! let atom_box1: &'static _ = AtomBox::new_static(0);
-//! let atom_box2: &'static _ = AtomBox::new_static(0);
+//! let atom_box1 = Arc::new(AtomBox::new(0));
+//! let atom_box2 = Arc::new(AtomBox::new(0));
 //!
+//! let a_box1 = atom_box1.clone();
 //! let handle1 = thread::spawn(move || {
 //!     let mut current_value = 0;
 //!     for _ in 1..=ITERATIONS {
-//!         let new_value = atom_box1.load();
+//!         let new_value = a_box1.load();
 //!         assert!(*new_value >= current_value, "Value should not decrease");
 //!         current_value = *new_value;
 //!     }
 //! });
 //!
+//! let a_box1 = atom_box1.clone();
+//! let a_box2 = atom_box2.clone();
 //! let handle2 = thread::spawn(move || {
 //!     for i in 1..=ITERATIONS {
-//!         let guard1 = atom_box1.swap(i);
+//!         let guard1 = a_box1.swap(i);
 //!         let value1 = *guard1;
-//!         let guard2 = atom_box2.swap_from_guard(guard1);
+//!         let guard2 = a_box2.swap_from_guard(guard1);
 //!         assert!(
 //!             *guard2 <= value1,
 //!             "Value in first box should be greater than or equal to value in second box"
@@ -678,6 +681,23 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
                 new_value,
             )),
         }
+    }
+}
+
+impl<'domain, T, const DOMAIN_ID: usize> Drop for AtomBox<'domain, T, DOMAIN_ID> {
+    fn drop(&mut self) {
+        // # Safety
+        //
+        // The pointer to this object was originally created via box into raw.
+        // The heap allocated value cannot be dropped via external code.
+        // We are the only person with this pointer since we have an exclusive reference to the box
+        // and we would not have this pointer if we had given it out in a StoreGuard. There might
+        // be other people referencing it as a read only value where it is protected
+        // via hazard pointers.
+        // We are safe to flag it for retire, where it will be reclaimed when it is no longer
+        // protected by any hazard pointers.
+        let ptr = self.ptr.load(Ordering::Relaxed);
+        unsafe { self.domain.retire(ptr as *mut T) };
     }
 }
 
