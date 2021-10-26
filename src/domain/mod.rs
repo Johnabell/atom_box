@@ -187,7 +187,6 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         let mut tail_ptr = None;
         let mut reclaimed = 0;
         let mut number_remaining = 0;
-        println!("Beginning reclaim");
         while !node_ptr.is_null() {
             // # Safety
             //
@@ -196,7 +195,6 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
             let next = node.next.load(Ordering::Relaxed);
             if guarded_ptrs.contains(&(node.value.ptr as *const usize)) {
                 // The pointer is still guarded keep in the retired list
-                println!("Pointer guarded");
                 node.next.store(still_retired, Ordering::Relaxed);
                 still_retired = node_ptr;
                 if tail_ptr.is_none() {
@@ -204,7 +202,6 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
                 }
                 number_remaining += 1;
             } else {
-                println!("Pointer being freed");
                 // Deallocate the retired item
                 //
                 // # Safety

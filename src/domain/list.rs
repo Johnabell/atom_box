@@ -73,15 +73,8 @@ impl<T> LockFreeList<T> {
     }
 }
 
-impl<T> Drop for Node<T> {
-    fn drop(&mut self) {
-        println!("Dropping node");
-    }
-}
-
 impl<T> Drop for LockFreeList<T> {
     fn drop(&mut self) {
-        println!("Dropping list");
         let mut node_ptr = self.head.load(Ordering::Relaxed);
         while !node_ptr.is_null() {
             let node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
