@@ -69,8 +69,8 @@ mod macros {
     // This macro enables us to create a const function in normal compilation and a non const
     // function when compiling for loom.
     macro_rules! conditional_const {
-        ($( $doc_comment:expr )?, $visibility:vis, $( $token:tt )*) => {
-            $( #[doc = $doc_comment] )?
+        ($doc_comment:expr, $visibility:vis, $( $token:tt )*) => {
+            #[doc = $doc_comment]
             #[cfg(not(loom))]
             $visibility const $( $token )*
             #[cfg(loom)]
