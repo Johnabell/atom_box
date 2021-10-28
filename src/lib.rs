@@ -14,7 +14,7 @@
 //! use atom_box::AtomBox;
 //! use std::{sync::Arc, thread};
 //!
-//! const ITERATIONS: usize = 100000;
+//! const ITERATIONS: usize = 1000;
 //!
 //! let atom_box1 = Arc::new(AtomBox::new(0));
 //! let atom_box2 = Arc::new(AtomBox::new(0));
@@ -91,7 +91,7 @@ mod macros {
 /// use atom_box::AtomBox;
 /// use std::thread;
 ///
-/// const ITERATIONS: usize = 100000;
+/// const ITERATIONS: usize = 1000;
 ///
 /// let atom_box1: &'static _ = AtomBox::new_static(0);
 /// let atom_box2: &'static _ = AtomBox::new_static(0);
