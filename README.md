@@ -17,7 +17,7 @@ An alternative method is via use of hazard pointers which is the implementation 
 Many users of this crate will be able to make use of the `AtomBox` without a detailed understanding of the underlying mechanism.
 However, there are a few important factors that should be considered when choosing to use this particular implementation:
 
-- Every load requires the acquisition of a Hazard Pointer. An operation which is linear in the number of threads and number of active `Atom Box`es.
+- Every load requires the acquisition of a Hazard Pointer. An operation which is linear in the number of threads and number of active `AtomBox`es.
 - There is a memory overhead associated with both the hazard pointers themselves and items that have been retired but are yet to be reclaimed.
 - Hazard pointers will only be deallocated when a domain is dropped.
   In the case of the default shared domain, it is statically allocated and consequently never dropped.
@@ -108,7 +108,7 @@ Currently the moderation team consists of John Bell only. We would welcome more 
 
 ## Licence
 
-The project is licensed under the [MIT license](https://github.com/tokio-rs/loom/blob/master/LICENSE).
+The project is licensed under the [MIT license](https://github.com/Johnabell/atom_box/blob/master/LICENSE).
 
 ## References
 
