@@ -22,6 +22,7 @@ pub enum ReclaimStrategy {
     TimedCapped(TimedCappedSettings),
 
     /// Memory reclaimation will only happen when the `reclaim` method on [`crate::domain::Domain`]
+    /// is called.
     Manual,
 }
 
