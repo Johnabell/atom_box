@@ -161,6 +161,26 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         )
     }
 
+    /// Reclaim all unprotected retired items.
+    ///
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+    ///
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Manual);
+    ///
+    /// let atom_box = AtomBox::new_with_domain("Hello World", &CUSTOM_DOMAIN);
+    /// atom_box.swap("Goodbye World");
+    ///
+    /// CUSTOM_DOMAIN.reclaim();
+    /// ```
+    pub fn reclaim(&self) -> usize {
+        self.bulk_reclaim()
+    }
+
     fn bulk_reclaim(&self) -> usize {
         let retired_list = self
             .retired

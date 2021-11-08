@@ -11,6 +11,7 @@ const DEFAULT_HAZARD_POINTER_MULTIPLIER: isize = 2;
 /// A `default` const constructor function is defined for this enum. It cannot implement `Default`
 /// since we would like the `default` constructor to be a const function.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ReclaimStrategy {
     /// Every time an item is retired the domain will try to reclaim any items which are not
     /// currently being protected by a hazard pointer.
@@ -19,6 +20,9 @@ pub enum ReclaimStrategy {
     /// Items will be reclaimed both periodically, and when the number of retired items exceeds
     /// certain thresholds.
     TimedCapped(TimedCappedSettings),
+
+    /// Memory reclaimation will only happen when the `reclaim` method on [`crate::domain::Domain`]
+    Manual,
 }
 
 impl ReclaimStrategy {
@@ -27,7 +31,8 @@ impl ReclaimStrategy {
             Self::Eager => true,
             Self::TimedCapped(settings) => {
                 settings.should_reclaim(hazard_pointer_count, retired_count)
-            }
+            },
+            Self::Manual => false,
         }
     }
 

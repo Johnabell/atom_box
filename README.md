@@ -1,7 +1,7 @@
 # Atom Box
 
 Atom Box provides an atomic box implementation where the box owns the contained value and its underlying allocation.
-It is therefore, responsible for deallocating the memory when it is no longer being access by any threads.
+It is therefore, responsible for deallocating the memory when it is no longer being accessed by any threads.
 
 Under the covers Atom Box is 'a safe implementation of hazard pointers in rust.'
 
