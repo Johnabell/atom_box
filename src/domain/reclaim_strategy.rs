@@ -31,7 +31,7 @@ impl ReclaimStrategy {
             Self::Eager => true,
             Self::TimedCapped(settings) => {
                 settings.should_reclaim(hazard_pointer_count, retired_count)
-            },
+            }
             Self::Manual => false,
         }
     }
