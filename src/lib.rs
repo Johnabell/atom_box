@@ -55,7 +55,7 @@ pub mod domain;
 mod hazard_ptr;
 mod sync;
 
-use crate::domain::Domain;
+use crate::domain::{Domain, HazardPointer};
 use hazard_ptr::HazPtr;
 
 #[cfg(not(loom))]
@@ -475,7 +475,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{domain, reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, Reclaimstrategy}};
     ///
     /// const custom_domain_id: usize = 42;
     /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
@@ -630,10 +630,10 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{domain, reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
     /// const custom_domain_id: usize = 42;
-    /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
+    /// static custom_domain: Domain<custom_domain_id> = Domain::new(ReclaimStrategy::Eager);
     ///
     /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
     /// let atom_box2 = AtomBox::new("world");
@@ -752,14 +752,14 @@ pub struct LoadGuard<'domain, T, const DOMAIN_ID: usize> {
     // lifetime?
     #[allow(dead_code)]
     domain: &'domain Domain<DOMAIN_ID>,
-    haz_ptr: Option<&'domain HazPtr>,
+    haz_ptr: Option<&'domain HazardPointer>,
 }
 
 impl<T, const DOMAIN_ID: usize> Drop for LoadGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
         if let Some(haz_ptr) = self.haz_ptr {
             haz_ptr.reset();
-            haz_ptr.release();
+            self.domain.release_hazard_ptr(haz_ptr);
         }
     }
 }
