@@ -1,21 +1,23 @@
 use crate::macros::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
+use std::iter::Iterator;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub(super) struct Bicephaly<T> {
-    pub(super) available_head: AtomicPtr<Node<T>>,
-    pub(super) in_use_head: AtomicPtr<Node<T>>,
-    pub(super) available_count: AtomicIsize,
-    pub(super) in_use_count: AtomicIsize,
+    available_head: AtomicPtr<Node<T>>,
+    in_use_head: AtomicPtr<Node<T>>,
+    available_count: AtomicIsize,
+    in_use_count: AtomicIsize,
 }
 
 #[derive(Debug)]
 pub(crate) struct Node<T> {
-    pub(super) value: T,
-    pub(super) next_available: AtomicPtr<Node<T>>,
-    pub(super) next_in_use: AtomicPtr<Node<T>>,
+    value: T,
+    next_available: AtomicPtr<Node<T>>,
+    next_in_use: AtomicPtr<Node<T>>,
 }
 
 impl<T> Node<T> {
@@ -46,7 +48,7 @@ macro_rules! push_node_method {
         ///
         /// The pointer to the node must be safe to dereference and passing a node to this function
         /// should be considered to be passing ownership of the node to the [`Bicephaly`].
-        pub(super) fn $push_node_method_name(&self, node: *mut Node<T>) -> *mut Node<T> {
+        fn $push_node_method_name(&self, node: *mut Node<T>) -> *mut Node<T> {
             // # Safety
             //
             // We have ownership of the node by vurtue of the type system.
@@ -103,7 +105,7 @@ impl<T> Bicephaly<T> {
         self.push_available_node(node as *const _ as *mut _);
     }
 
-    pub(super) fn pop_available_node(&self) -> Option<NonNull<Node<T>>> {
+    fn pop_available_node(&self) -> Option<NonNull<Node<T>>> {
         let mut head_ptr = self.available_head.load(Ordering::Acquire);
         while !head_ptr.is_null() {
             // # Safety
@@ -151,6 +153,13 @@ impl<T> Bicephaly<T> {
     );
 
     push_node_method!(push_in_use_node, in_use_head, next_in_use, in_use_count);
+
+    pub(super) fn iter(&self) -> BicephalyIterator<T> {
+        BicephalyIterator {
+            node: self.in_use_head.load(Ordering::Acquire),
+            _bicephaly: PhantomData,
+        }
+    }
 }
 
 impl<T> Drop for Bicephaly<T> {
@@ -160,6 +169,28 @@ impl<T> Drop for Bicephaly<T> {
             let node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
             node_ptr = node.next_in_use.load(Ordering::Relaxed);
         }
+    }
+}
+
+pub(super) struct BicephalyIterator<'a, T> {
+    node: *const Node<T>,
+    _bicephaly: PhantomData<&'a Bicephaly<T>>,
+}
+
+impl<'a, T> Iterator for BicephalyIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.node.is_null() {
+            return None;
+        }
+        // # Safety
+        //
+        // Nodes are only deallocated when the domain is dropped. Nodes are allocated via box so
+        // maintain all the safety guarantees associated with Box.
+        let node = unsafe { &*self.node };
+        self.node = node.next_in_use.load(Ordering::Acquire);
+        Some(&node.value)
     }
 }
 
@@ -192,6 +223,24 @@ mod test {
             node.next_in_use.load(Ordering::Acquire).is_null(),
             "The next pointer should be null"
         );
+    }
+
+    #[test]
+    fn test_iterator() {
+        // Arrange
+        let list = Bicephaly::new();
+
+        list.push_in_use(0);
+        list.push_in_use(1);
+        list.push_in_use(2);
+        list.push_in_use(3);
+        list.push_in_use(4);
+
+        // Act
+        let members: Vec<_> = list.iter().collect();
+
+        // Assert
+        assert_eq!(vec![&4, &3, &2, &1, &0], members);
     }
 
     #[test]
