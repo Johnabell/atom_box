@@ -258,20 +258,17 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
     }
 
     fn get_guarded_ptrs(&self) -> Set<*const usize> {
-        let mut guarded_ptrs = Set::new();
-        let mut node_ptr = self.hazard_ptrs.in_use_head.load(Ordering::Acquire);
-        while !node_ptr.is_null() {
-            // # Safety
-            //
-            // Hazard pointers are only deallocated when the domain is dropped
-            let node = unsafe { &*node_ptr };
-            let guarded_ptr = node.value.ptr.load(Ordering::Acquire);
-            if !guarded_ptr.is_null() {
-                guarded_ptrs.insert(guarded_ptr as *const usize);
-            }
-            node_ptr = node.next_in_use.load(Ordering::Acquire);
-        }
-        guarded_ptrs
+        self.hazard_ptrs
+            .iter()
+            .filter_map(|haz_ptr| {
+                let guarded_ptr = haz_ptr.ptr.load(Ordering::Acquire);
+                if guarded_ptr.is_null() {
+                    None
+                } else {
+                    Some(guarded_ptr as *const usize)
+                }
+            })
+            .collect()
     }
 }
 
