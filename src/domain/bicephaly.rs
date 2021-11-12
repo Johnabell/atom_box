@@ -1,3 +1,4 @@
+#![deny(unsafe_op_in_unsafe_fn)]
 use crate::macros::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 use alloc::boxed::Box;
@@ -53,7 +54,7 @@ macro_rules! push_node_method {
             loop {
                 // Safety: according to the safety contract of the function we are able to
                 // dereference this node
-                (&*node).$next.store(head_ptr, Ordering::Release);
+                unsafe { &*node }.$next.store(head_ptr, Ordering::Release);
                 match self.$head.compare_exchange_weak(
                     head_ptr,
                     node,
