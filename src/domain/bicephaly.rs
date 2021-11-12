@@ -3,7 +3,6 @@ use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 use std::iter::Iterator;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub(super) struct Bicephaly<T> {
@@ -48,16 +47,12 @@ macro_rules! push_node_method {
         ///
         /// The pointer to the node must be safe to dereference and passing a node to this function
         /// should be considered to be passing ownership of the node to the [`Bicephaly`].
-        fn $push_node_method_name(&self, node: *mut Node<T>) -> *mut Node<T> {
-            // # Safety
-            //
-            // We have ownership of the node by vurtue of the type system.
-            //
-            // Since we have just created the node we are also safe to dereference it
+        unsafe fn $push_node_method_name(&self, node: *mut Node<T>) -> *mut Node<T> {
             let mut head_ptr = self.$head.load(Ordering::Acquire);
             loop {
-                // Safety: we currently have exclusive access to the node we have just created
-                unsafe { &*node }.$next.store(head_ptr, Ordering::Release);
+                // Safety: according to the safety contract of the function we are able to
+                // dereference this node
+                (&*node).$next.store(head_ptr, Ordering::Release);
                 match self.$head.compare_exchange_weak(
                     head_ptr,
                     node,
@@ -92,20 +87,19 @@ impl<T> Bicephaly<T> {
     );
 
     pub(super) fn get_available(&self) -> Option<&Node<T>> {
-        match self.pop_available_node() {
-            None => None,
-            Some(mut node) => {
-                let node = unsafe { node.as_mut() };
-                Some(node)
-            }
-        }
+        self.pop_available_node()
     }
 
     pub(super) fn set_node_available(&self, node: &Node<T>) {
-        self.push_available_node(node as *const _ as *mut _);
+        // # Safety
+        //
+        // We are the only ones able to create nodes. We only create them using box into raw.
+        // Pushing onto the available list does not transfer ownership to the Bicephaly. However,
+        // all nodes are owned by a Bicephaly.
+        unsafe { self.push_available_node(node as *const _ as *mut _) };
     }
 
-    fn pop_available_node(&self) -> Option<NonNull<Node<T>>> {
+    fn pop_available_node(&self) -> Option<&Node<T>> {
         let mut head_ptr = self.available_head.load(Ordering::Acquire);
         while !head_ptr.is_null() {
             // # Safety
@@ -124,7 +118,7 @@ impl<T> Bicephaly<T> {
             ) {
                 Ok(_) => {
                     self.available_count.fetch_add(-1, Ordering::Release);
-                    return NonNull::new(head_ptr);
+                    return Some(head);
                 }
                 Err(updated_head_ptr) => {
                     head_ptr = updated_head_ptr;
@@ -134,7 +128,7 @@ impl<T> Bicephaly<T> {
         None
     }
 
-    pub(super) fn push_in_use(&self, value: T) -> *mut Node<T> {
+    pub(super) fn push_in_use(&self, value: T) -> &Node<T> {
         let node = Box::into_raw(Box::new(Node::new(value)));
 
         // # Safety
@@ -142,7 +136,7 @@ impl<T> Bicephaly<T> {
         // We have ownership of T and we have just created the node so also own that.
         //
         // Since we have just created the node we are also safe to dereference it
-        self.push_in_use_node(node)
+        unsafe { &*self.push_in_use_node(node) }
     }
 
     push_node_method!(
@@ -166,6 +160,11 @@ impl<T> Drop for Bicephaly<T> {
     fn drop(&mut self) {
         let mut node_ptr = self.in_use_head.load(Ordering::Relaxed);
         while !node_ptr.is_null() {
+            // # Safety
+            //
+            // We are the only ones capable of creating nodes. Nodes are create with
+            // `Box::into_raw`. Therefore, we know that the safety guarantees of `Box` have been
+            // met and we have a non null pointer.
             let node: Box<Node<T>> = unsafe { Box::from_raw(node_ptr) };
             node_ptr = node.next_in_use.load(Ordering::Relaxed);
         }
@@ -205,7 +204,7 @@ mod test {
         // Arrange
         let list = Bicephaly::new();
         // Act
-        let node_ptr = list.push_in_use(1);
+        let node = list.push_in_use(1);
         // Assert
         assert_eq!(
             list.in_use_count.load(Ordering::Acquire),
@@ -214,10 +213,9 @@ mod test {
         );
         assert_eq!(
             list.in_use_head.load(Ordering::Acquire),
-            node_ptr,
+            node as *const _ as *mut _,
             "Head of list is new node"
         );
-        let node: &Node<usize> = unsafe { &*node_ptr };
         assert_eq!(node.value, 1, "Value of item in node should be 1");
         assert!(
             node.next_in_use.load(Ordering::Acquire).is_null(),
@@ -248,7 +246,7 @@ mod test {
         // Arrange
         let list = Bicephaly::new();
         let node = list.push_in_use(1);
-        list.set_node_available(unsafe { &*node });
+        list.set_node_available(node);
 
         // Act
         let popped_node = list
@@ -265,10 +263,9 @@ mod test {
             std::ptr::null_mut(),
             "List is now empty, head should be null"
         );
-        let node: &Node<usize> = unsafe { popped_node.as_ref() };
-        assert_eq!(node.value, 1, "Value of item in node should be 1");
+        assert_eq!(popped_node.value, 1, "Value of item in node should be 1");
         assert!(
-            node.next_available.load(Ordering::Acquire).is_null(),
+            popped_node.next_available.load(Ordering::Acquire).is_null(),
             "The next pointer should be null"
         );
     }

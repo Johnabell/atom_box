@@ -25,14 +25,13 @@
 //!
 //! let atom_box = AtomBox::new_with_domain("Hello World", &CUSTOM_DOMAIN);
 //! ```
-use super::HazPtr;
 
 mod bicephaly;
 mod list;
 mod reclaim_strategy;
 
 use crate::macros::conditional_const;
-use crate::sync::Ordering;
+use crate::sync::{AtomicPtr, Ordering};
 use bicephaly::Bicephaly;
 use list::{LockFreeList, Node};
 pub use reclaim_strategy::{ReclaimStrategy, TimedCappedSettings};
@@ -40,7 +39,20 @@ use std::collections::HashSet;
 
 pub(crate) trait Retirable {}
 
-pub(crate) type HazardPointer = bicephaly::Node<HazPtr>;
+#[cfg(not(test))]
+pub(crate) struct HazardPointer<'a>(&'a bicephaly::Node<AtomicPtr<usize>>);
+#[cfg(test)]
+pub(crate) struct HazardPointer<'a>(pub(super) &'a bicephaly::Node<AtomicPtr<usize>>);
+
+impl<'a> HazardPointer<'a> {
+    pub(crate) fn reset(&self) {
+        self.0.store(std::ptr::null_mut(), Ordering::Release);
+    }
+
+    pub(crate) fn protect(&self, ptr: *mut usize) {
+        self.0.store(ptr, Ordering::Release);
+    }
+}
 
 impl<T> Retirable for T {}
 
@@ -70,7 +82,7 @@ impl Retire {
 #[derive(Debug)]
 pub struct Domain<const DOMAIN_ID: usize> {
     retired: LockFreeList<Retire>,
-    hazard_ptrs: Bicephaly<HazPtr>,
+    hazard_ptrs: Bicephaly<AtomicPtr<usize>>,
     reclaim_strategy: ReclaimStrategy,
 }
 
@@ -115,21 +127,25 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         }
     );
 
-    pub(crate) fn acquire_haz_ptr(&self) -> &HazardPointer {
+    pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer {
         if let Some(haz_ptr) = self.hazard_ptrs.get_available() {
-            haz_ptr
+            HazardPointer(haz_ptr)
         } else {
             self.acquire_new_haz_ptr()
         }
     }
 
-    pub(crate) fn release_hazard_ptr(&self, haz_ptr: &HazardPointer) {
-        self.hazard_ptrs.set_node_available(haz_ptr);
+    pub(crate) fn release_hazard_ptr(&self, haz_ptr: HazardPointer) {
+        haz_ptr.reset();
+        self.hazard_ptrs.set_node_available(haz_ptr.0);
     }
 
-    fn acquire_new_haz_ptr(&self) -> &HazardPointer {
-        let haz_ptr = HazPtr::new();
-        (unsafe { &*self.hazard_ptrs.push_in_use(haz_ptr) }) as _
+    fn acquire_new_haz_ptr(&self) -> HazardPointer {
+        HazardPointer(
+            &*self
+                .hazard_ptrs
+                .push_in_use(AtomicPtr::new(std::ptr::null_mut())),
+        )
     }
 
     /// Places a pointer on the retire list to be safely reclaimed when no hazard pointers are
@@ -257,7 +273,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         self.hazard_ptrs
             .iter()
             .filter_map(|haz_ptr| {
-                let guarded_ptr = haz_ptr.ptr.load(Ordering::Acquire);
+                let guarded_ptr = haz_ptr.load(Ordering::Acquire);
                 if guarded_ptr.is_null() {
                     None
                 } else {
