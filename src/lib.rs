@@ -52,11 +52,9 @@ use crate::sync::{AtomicPtr, Ordering};
 use std::ops::Deref;
 
 pub mod domain;
-mod hazard_ptr;
 mod sync;
 
-use crate::domain::Domain;
-use hazard_ptr::HazPtr;
+use crate::domain::{Domain, HazardPointer};
 
 #[cfg(not(loom))]
 const SHARED_DOMAIN_ID: usize = 0;
@@ -475,7 +473,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{domain, reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, Reclaimstrategy}};
     ///
     /// const custom_domain_id: usize = 42;
     /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
@@ -630,10 +628,10 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{domain, reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
     /// const custom_domain_id: usize = 42;
-    /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
+    /// static custom_domain: Domain<custom_domain_id> = Domain::new(ReclaimStrategy::Eager);
     ///
     /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
     /// let atom_box2 = AtomBox::new("world");
@@ -752,14 +750,13 @@ pub struct LoadGuard<'domain, T, const DOMAIN_ID: usize> {
     // lifetime?
     #[allow(dead_code)]
     domain: &'domain Domain<DOMAIN_ID>,
-    haz_ptr: Option<&'domain HazPtr>,
+    haz_ptr: Option<HazardPointer<'domain>>,
 }
 
 impl<T, const DOMAIN_ID: usize> Drop for LoadGuard<'_, T, DOMAIN_ID> {
     fn drop(&mut self) {
-        if let Some(haz_ptr) = self.haz_ptr {
-            haz_ptr.reset();
-            haz_ptr.release();
+        if let Some(haz_ptr) = self.haz_ptr.take() {
+            self.domain.release_hazard_ptr(haz_ptr);
         }
     }
 }
@@ -814,7 +811,7 @@ mod test {
         );
         assert_eq!(
             value.ptr,
-            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire),
+            value.haz_ptr.as_ref().unwrap().0.load(Ordering::Acquire),
             "The hazard pointer is protecting the correct pointer"
         );
 
@@ -859,7 +856,7 @@ mod test {
         assert_eq!(**value, 20, "The correct value is returned via load");
         assert_eq!(
             value.ptr as *mut usize,
-            value.haz_ptr.unwrap().ptr.load(Ordering::Acquire),
+            value.haz_ptr.as_ref().unwrap().0.load(Ordering::Acquire),
             "The value is protected by the hazard pointer"
         );
 

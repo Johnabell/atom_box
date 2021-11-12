@@ -14,4 +14,4 @@ keywords = ["atomic", "harard", "pointers", "AtomicBox"]
 categories = ["concurrency", "rust-patterns", "memory-management"]
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.5"
+loom = { version = "0.5", features = ["checkpoint"] }
