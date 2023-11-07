@@ -47,15 +47,20 @@
 //! handle2.join().unwrap();
 //! ```
 
+#![no_std]
 #![warn(missing_docs)]
+extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 use crate::sync::{AtomicPtr, Ordering};
-use std::ops::Deref;
+use core::ops::Deref;
 
 pub mod domain;
 mod hazard_ptr;
 mod sync;
 
 use crate::domain::Domain;
+use alloc::boxed::Box;
 use hazard_ptr::HazPtr;
 
 #[cfg(not(loom))]
@@ -233,7 +238,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             // protect pointer
             haz_ptr.protect(original_ptr as *mut usize);
 
-            std::sync::atomic::fence(Ordering::SeqCst);
+            core::sync::atomic::fence(Ordering::SeqCst);
 
             // check pointer
             let current_ptr = self.ptr.load(Ordering::Acquire);
@@ -360,12 +365,12 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         new_value: StoreGuard<'domain, T, DOMAIN_ID>,
     ) -> StoreGuard<'domain, T, DOMAIN_ID> {
         assert!(
-            std::ptr::eq(new_value.domain, self.domain),
+            core::ptr::eq(new_value.domain, self.domain),
             "Cannot use guarded value from different domain"
         );
 
         let new_ptr = new_value.ptr;
-        std::mem::forget(new_value);
+        core::mem::forget(new_value);
         let old_ptr = self.ptr.swap(new_ptr as *mut T, Ordering::AcqRel);
         StoreGuard {
             ptr: old_ptr,
@@ -499,7 +504,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         ),
     > {
         assert!(
-            std::ptr::eq(new_value.domain, self.domain),
+            core::ptr::eq(new_value.domain, self.domain),
             "Cannot use guarded value from different domain"
         );
 
@@ -511,7 +516,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             Ordering::Acquire,
         ) {
             Ok(ptr) => {
-                std::mem::forget(new_value);
+                core::mem::forget(new_value);
                 Ok(StoreGuard {
                     ptr,
                     domain: self.domain,
@@ -654,7 +659,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
         ),
     > {
         assert!(
-            std::ptr::eq(new_value.domain, self.domain),
+            core::ptr::eq(new_value.domain, self.domain),
             "Cannot use guarded value from different domain"
         );
 
@@ -666,7 +671,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
             Ordering::Acquire,
         ) {
             Ok(ptr) => {
-                std::mem::forget(new_value);
+                core::mem::forget(new_value);
                 Ok(StoreGuard {
                     ptr,
                     domain: self.domain,
@@ -697,7 +702,7 @@ impl<'domain, T, const DOMAIN_ID: usize> Drop for AtomBox<'domain, T, DOMAIN_ID>
         // We are safe to flag it for retire, where it will be reclaimed when it is no longer
         // protected by any hazard pointers.
         let ptr = self.ptr.load(Ordering::Relaxed);
-        unsafe { self.domain.retire(ptr as *mut T) };
+        unsafe { self.domain.retire(ptr) };
     }
 }
 
@@ -781,7 +786,7 @@ impl<T, const DOMAIN_ID: usize> Deref for LoadGuard<'_, T, DOMAIN_ID> {
 mod test {
     use super::*;
 
-    pub(crate) use std::sync::atomic::AtomicUsize;
+    pub(crate) use core::sync::atomic::AtomicUsize;
 
     static TEST_DOMAIN: domain::Domain<1> = Domain::new(domain::ReclaimStrategy::Eager);
 

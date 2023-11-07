@@ -32,9 +32,13 @@ mod reclaim_strategy;
 
 use crate::macros::conditional_const;
 use crate::sync::Ordering;
+use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
+use alloc::collections::BTreeSet as Set;
 use list::{LockFreeList, Node};
 pub use reclaim_strategy::{ReclaimStrategy, TimedCappedSettings};
-use std::collections::HashSet;
+#[cfg(feature = "std")]
+use std::collections::HashSet as Set;
 
 pub(crate) trait Retirable {}
 
@@ -51,7 +55,7 @@ impl Retire {
     fn new<T>(ptr: *mut T) -> Self {
         Self {
             ptr: ptr as *mut usize,
-            retirable: unsafe { std::mem::transmute(ptr as *mut dyn Retirable) },
+            retirable: unsafe { core::mem::transmute(ptr as *mut dyn Retirable) },
         }
     }
 }
@@ -146,7 +150,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
     /// Value must be associated with this domain.
     /// Value must be able to live as long as the domain.
     pub(crate) unsafe fn retire<T>(&self, value: *mut T) {
-        std::sync::atomic::fence(Ordering::SeqCst);
+        core::sync::atomic::fence(Ordering::SeqCst);
 
         self.retired.push(Retire::new(value));
         if self.should_reclaim() {
@@ -185,9 +189,9 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         let retired_list = self
             .retired
             .head
-            .swap(std::ptr::null_mut(), Ordering::Acquire);
+            .swap(core::ptr::null_mut(), Ordering::Acquire);
 
-        std::sync::atomic::fence(Ordering::SeqCst);
+        core::sync::atomic::fence(Ordering::SeqCst);
 
         self.retired.count.store(0, Ordering::Release);
         if retired_list.is_null() {
@@ -199,11 +203,11 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
 
     fn reclaim_unguarded(
         &self,
-        guarded_ptrs: HashSet<*const usize>,
+        guarded_ptrs: Set<*const usize>,
         retired_list: *mut Node<Retire>,
     ) -> usize {
         let mut node_ptr = retired_list;
-        let mut still_retired = std::ptr::null_mut();
+        let mut still_retired = core::ptr::null_mut();
         let mut tail_ptr = None;
         let mut reclaimed = 0;
         let mut number_remaining = 0;
@@ -231,7 +235,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
                 // the pointer has not yet been dropped and has only been placed in the retired
                 // list once. There are currently no other threads looking at the value since it is
                 // no longer protected by any of the hazard pointers.
-                unsafe { std::ptr::drop_in_place(node.value.retirable) };
+                unsafe { core::ptr::drop_in_place(node.value.retirable) };
 
                 // # Safety
                 //
@@ -246,7 +250,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         }
 
         if let Some(tail) = tail_ptr {
-            std::sync::atomic::fence(Ordering::SeqCst);
+            core::sync::atomic::fence(Ordering::SeqCst);
 
             // # Safety
             //
@@ -258,8 +262,8 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         reclaimed
     }
 
-    fn get_guarded_ptrs(&self) -> HashSet<*const usize> {
-        let mut guarded_ptrs = HashSet::new();
+    fn get_guarded_ptrs(&self) -> Set<*const usize> {
+        let mut guarded_ptrs = Set::new();
         let mut node_ptr = self.hazard_ptrs.head.load(Ordering::Acquire);
         while !node_ptr.is_null() {
             // # Safety

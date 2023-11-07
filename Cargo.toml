@@ -13,5 +13,9 @@ repository = "https://github.com/Johnabell/atom_box.git"
 keywords = ["atomic", "harard", "pointers", "AtomicBox"]
 categories = ["concurrency", "rust-patterns", "memory-management"]
 
+[features]
+default = ["std"]
+std = []
+
 [target.'cfg(loom)'.dependencies]
 loom = "0.5"

@@ -1,7 +1,10 @@
 use crate::macros::conditional_const;
+#[cfg(feature = "std")]
 use crate::sync::{AtomicU64, Ordering};
-use std::time::Duration;
+#[cfg(feature = "std")]
+use core::time::Duration;
 
+#[cfg(feature = "std")]
 const DEFAULT_SYNC_THRESHOLD: Duration = Duration::from_nanos(2000000000);
 const DEFAULT_RETIERED_THRESHOLD: isize = 1000;
 const DEFAULT_HAZARD_POINTER_MULTIPLIER: isize = 2;
@@ -21,7 +24,7 @@ pub enum ReclaimStrategy {
     /// certain thresholds.
     TimedCapped(TimedCappedSettings),
 
-    /// Memory reclaimation will only happen when the `reclaim` method on [`crate::domain::Domain`]
+    /// Memory reclamation will only happen when the `reclaim` method on [`crate::domain::Domain`]
     /// is called.
     Manual,
 }
@@ -47,15 +50,36 @@ impl ReclaimStrategy {
 }
 
 /// The particulate settings of the `TimedCapped` reclamation strategy.
+///
+/// # Example
+///
+/// ```
+/// use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
+/// use core::time::Duration;
+///
+/// const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(
+///     #[cfg(feature = "std")]
+///     TimedCappedSettings::default()
+///         .with_timeout(Duration::from_nanos(5000000000))
+///         .with_retired_threshold(1000)
+///         .with_hazard_pointer_multiplier(3),
+///     #[cfg(not(feature = "std"))]
+///     TimedCappedSettings::default()
+///         .with_retired_threshold(1000)
+///         .with_hazard_pointer_multiplier(3),
+/// );
 #[derive(Debug)]
 pub struct TimedCappedSettings {
+    #[cfg(feature = "std")]
     last_sync_time: AtomicU64,
+    #[cfg(feature = "std")]
     sync_timeout: Duration,
     hazard_pointer_multiplier: isize,
     retired_threshold: isize,
 }
 
 impl TimedCappedSettings {
+    #[cfg(feature = "std")]
     conditional_const!(
         "Creates a new `TimedCappedSettings`.
 
@@ -72,22 +96,58 @@ the retired items.
 ```
 use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
 
-const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new(
-    std::time::Duration::from_nanos(5000000000),
+const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new_with_timeout(
+    core::time::Duration::from_nanos(5000000000),
     1000,
     3,
 ));
 ```
 ",
         pub,
-        fn new(
+        fn new_with_timeout(
             sync_timeout: Duration,
             retired_threshold: isize,
             hazard_pointer_multiplier: isize,
         ) -> Self {
             Self {
+                #[cfg(feature = "std")]
                 last_sync_time: AtomicU64::new(0),
+                #[cfg(feature = "std")]
                 sync_timeout,
+                retired_threshold,
+                hazard_pointer_multiplier,
+            }
+        }
+    );
+
+    conditional_const!(
+        "Creates a new `TimedCappedSettings`.
+
+# Arguments
+
+* `retired_threshold` - The threshold after which a retired items should be reclaimed
+* 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of hazard
+pointers multiplied by `hazard_pointer_multiplier` then an attempt will be made to reclaim
+the retired items.
+
+# Example
+
+```
+use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
+
+const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new(
+    1000,
+    3,
+));
+```
+",
+        pub,
+        fn new(retired_threshold: isize, hazard_pointer_multiplier: isize) -> Self {
+            Self {
+                #[cfg(feature = "std")]
+                last_sync_time: AtomicU64::new(0),
+                #[cfg(feature = "std")]
+                sync_timeout: DEFAULT_SYNC_THRESHOLD,
                 retired_threshold,
                 hazard_pointer_multiplier,
             }
@@ -103,8 +163,9 @@ const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCapp
         self.check_sync_time()
     }
 
+    #[cfg(feature = "std")]
     fn check_sync_time(&self) -> bool {
-        use std::convert::TryFrom;
+        use core::convert::TryFrom;
         let time = u64::try_from(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -127,17 +188,56 @@ const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCapp
                 .is_ok()
     }
 
+    #[cfg(not(feature = "std"))]
+    #[inline(always)]
+    fn check_sync_time(&self) -> bool {
+        true
+    }
+
     conditional_const!(
-"Creates the default `TimedCappedSettings`.
+        "Creates the default `TimedCappedSettings`.
 
 This is not an implementation of `Default` since it is a const function.",
-        pub(self),
+        pub,
         fn default() -> Self {
             Self::new(
-                DEFAULT_SYNC_THRESHOLD,
                 DEFAULT_RETIERED_THRESHOLD,
                 DEFAULT_HAZARD_POINTER_MULTIPLIER,
             )
         }
     );
+
+    #[cfg(feature = "std")]
+    /// Set the timeout after which a reclamation should be attempted.
+    ///
+    /// If the time between the previous reclaimation and now exceeds this threshold, an attempt
+    /// will be made to reclaim the retired items.
+    pub const fn with_timeout(self, sync_timeout: Duration) -> Self {
+        Self {
+            sync_timeout,
+            ..self
+        }
+    }
+
+    /// Set the hazard pointer multiplier.
+    ///
+    /// If the number of retired items exceeds the number of hazard pointers multiplied by
+    /// `hazard_pointer_multiplier` then an attempt will be made to reclaim the retired items.
+    pub const fn with_hazard_pointer_multiplier(self, hazard_pointer_multiplier: isize) -> Self {
+        Self {
+            hazard_pointer_multiplier,
+            ..self
+        }
+    }
+
+    /// Sets the retired threshold.
+    ///
+    /// If the number of retired items exceeds this threshold an attempt will be made to reclaim
+    /// the retired items.
+    pub const fn with_retired_threshold(self, retired_threshold: isize) -> Self {
+        Self {
+            retired_threshold,
+            ..self
+        }
+    }
 }

@@ -9,13 +9,13 @@ pub struct HazPtr {
 impl HazPtr {
     pub(crate) fn new(active: bool) -> Self {
         Self {
-            ptr: AtomicPtr::new(std::ptr::null_mut()),
+            ptr: AtomicPtr::new(core::ptr::null_mut()),
             active: AtomicBool::new(active),
         }
     }
 
     pub(crate) fn reset(&self) {
-        self.ptr.store(std::ptr::null_mut(), Ordering::Release);
+        self.ptr.store(core::ptr::null_mut(), Ordering::Release);
     }
 
     pub(crate) fn protect(&self, ptr: *mut usize) {
