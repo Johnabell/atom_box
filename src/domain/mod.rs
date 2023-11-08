@@ -146,8 +146,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
 
     fn acquire_new_haz_ptr(&self) -> HazardPointer {
         HazardPointer(
-            &*self
-                .hazard_ptrs
+            self.hazard_ptrs
                 .push_in_use(AtomicPtr::new(core::ptr::null_mut())),
         )
     }
