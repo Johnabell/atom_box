@@ -751,9 +751,6 @@ impl<T, const DOMAIN_ID: usize> Drop for StoreGuard<'_, T, DOMAIN_ID> {
 /// Dereferences to the value.
 pub struct LoadGuard<'domain, T, const DOMAIN_ID: usize> {
     ptr: *const T,
-    // TODO: Can we remove this reference to the domain and still associate the Guard with its
-    // lifetime?
-    #[allow(dead_code)]
     domain: &'domain Domain<DOMAIN_ID>,
     haz_ptr: Option<HazardPointer<'domain>>,
 }
