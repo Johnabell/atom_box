@@ -1,16 +1,16 @@
 [package]
 name = "atom_box"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2018"
 authors = ["John Bell <bell.john.andrew@gmail.com>"]
 
 license = "MIT OR Apache-2.0"
 
 readme = "README.md"
-description = "A safe idiomatic Rust implementation of Atmoic Box using hazard pointers"
+description = "A safe idiomatic Rust implementation of Atomic Box using hazard pointers"
 repository = "https://github.com/Johnabell/atom_box.git"
 
-keywords = ["atomic", "harard", "pointers", "AtomicBox"]
+keywords = ["atomic", "hazard", "pointers", "AtomicBox"]
 categories = ["concurrency", "rust-patterns", "memory-management"]
 
 [features]
