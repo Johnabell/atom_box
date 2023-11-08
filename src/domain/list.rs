@@ -1,5 +1,6 @@
 use crate::macros::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
+use alloc::boxed::Box;
 
 #[derive(Debug)]
 pub(super) struct LockFreeList<T> {
@@ -19,7 +20,7 @@ impl<T> LockFreeList<T> {
         pub,
         fn new() -> Self {
             Self {
-                head: AtomicPtr::new(std::ptr::null_mut()),
+                head: AtomicPtr::new(core::ptr::null_mut()),
                 count: AtomicIsize::new(0),
             }
         }
@@ -28,7 +29,7 @@ impl<T> LockFreeList<T> {
     pub(super) fn push(&self, value: T) -> *mut Node<T> {
         let node = Box::into_raw(Box::new(Node {
             value,
-            next: AtomicPtr::new(std::ptr::null_mut()),
+            next: AtomicPtr::new(core::ptr::null_mut()),
         }));
 
         // # Safety
@@ -87,6 +88,7 @@ impl<T> Drop for LockFreeList<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_push() {
@@ -146,6 +148,6 @@ mod test {
             "The list should contain all the values from pushed to it from list2 and the original values from list 1"
         );
         // To avoid dropping the nodes which we moved from list2 to list1
-        std::mem::forget(list2);
+        core::mem::forget(list2);
     }
 }

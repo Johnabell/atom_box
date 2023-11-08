@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         rust: [ stable, nightly ]
+        features: [ --no-default-features, --all-features ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
@@ -24,6 +25,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
+          args: ${{ matrix.features }}
 
   test:
     name: Test Suite
@@ -31,6 +33,7 @@ jobs:
     strategy:
       matrix:
         rust: [ stable, nightly ]
+        features: [ --no-default-features, --all-features ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
@@ -42,6 +45,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
+          args: ${{ matrix.features }}
 
   fmt:
     name: Rustfmt
@@ -69,6 +73,7 @@ jobs:
     strategy:
       matrix:
         rust: [ stable, nightly ]
+        features: [ --no-default-features, --all-features ]
     steps:
       - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
       - uses: actions/checkout@v2
@@ -81,4 +86,37 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          # args: -- -D warnings
+          args: ${{ matrix.features }} -- -D warnings
+
+  loom:
+    name: Loom
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [ stable, nightly ]
+    steps:
+      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - run: RUSTFLAGS="--cfg loom" cargo test --test concurrency_tests --release
+
+  miri:
+    name: Miri
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: [ --no-default-features, --all-features ]
+    steps:
+      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+      - run: rustup component add miri
+      - run: RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo miri test ${{ matrix.features }}
