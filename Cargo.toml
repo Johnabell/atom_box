@@ -1,6 +1,6 @@
 [package]
 name = "atom_box"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2018"
 authors = ["John Bell <bell.john.andrew@gmail.com>"]
 
@@ -18,4 +18,4 @@ default = ["std"]
 std = []
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.5"
+loom = { version = "0.7.1", features = ["checkpoint"] }
