@@ -16,6 +16,7 @@ categories = ["concurrency", "rust-patterns", "memory-management"]
 [features]
 default = ["std"]
 std = []
+bicephany = []
 
 [target.'cfg(loom)'.dependencies]
 loom = { version = "0.7.1", features = ["checkpoint"] }

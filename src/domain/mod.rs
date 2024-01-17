@@ -26,7 +26,10 @@
 //! let atom_box = AtomBox::new_with_domain("Hello World", &CUSTOM_DOMAIN);
 //! ```
 
+#[cfg(feature = "bicephany")]
 mod bicephaly;
+#[cfg(not(feature = "bicephany"))]
+pub(crate) mod hazard_pointer_list;
 mod list;
 mod reclaim_strategy;
 
@@ -35,18 +38,34 @@ use crate::sync::{AtomicPtr, Ordering};
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
 use alloc::collections::BTreeSet as Set;
+#[cfg(feature = "bicephany")]
 use bicephaly::Bicephaly;
 use list::{LockFreeList, Node};
 pub use reclaim_strategy::{ReclaimStrategy, TimedCappedSettings};
 #[cfg(feature = "std")]
 use std::collections::HashSet as Set;
 
+#[cfg(not(feature = "bicephany"))]
+use self::hazard_pointer_list::HazardPointerList;
+
 pub(crate) trait Retirable {}
 
+#[cfg(not(feature = "bicephany"))]
+pub(crate) type HazardPointer<'a> = Pointer<'a, hazard_pointer_list::Node>;
+
+#[cfg(feature = "bicephany")]
+pub(crate) type HazardPointer<'a> = Pointer<'a, bicephaly::Node<AtomicPtr<usize>>>;
+
 #[cfg(not(test))]
-pub(crate) struct HazardPointer<'a>(&'a bicephaly::Node<AtomicPtr<usize>>);
+pub(crate) struct Pointer<'a, T>(&'a T);
 #[cfg(test)]
-pub(crate) struct HazardPointer<'a>(pub(super) &'a bicephaly::Node<AtomicPtr<usize>>);
+pub(crate) struct Pointer<'a, T>(pub(super) &'a T);
+
+impl<'a, T> Pointer<'a, T> {
+    fn new(value: &'a T) -> Self {
+        Pointer(value)
+    }
+}
 
 impl<'a> HazardPointer<'a> {
     pub(crate) fn reset(&self) {
@@ -86,6 +105,9 @@ impl Retire {
 #[derive(Debug)]
 pub struct Domain<const DOMAIN_ID: usize> {
     retired: LockFreeList<Retire>,
+    #[cfg(not(feature = "bicephany"))]
+    hazard_ptrs: HazardPointerList,
+    #[cfg(feature = "bicephany")]
     hazard_ptrs: Bicephaly<AtomicPtr<usize>>,
     reclaim_strategy: ReclaimStrategy,
 }
@@ -124,7 +146,10 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         pub(crate),
         fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
             Self {
+                #[cfg(feature = "bicephany")]
                 hazard_ptrs: Bicephaly::new(),
+                #[cfg(not(feature = "bicephany"))]
+                hazard_ptrs: LockFreeList::new(),
                 retired: LockFreeList::new(),
                 reclaim_strategy,
             }
@@ -133,7 +158,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
 
     pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer {
         if let Some(haz_ptr) = self.hazard_ptrs.get_available() {
-            HazardPointer(haz_ptr)
+            HazardPointer::new(haz_ptr)
         } else {
             self.acquire_new_haz_ptr()
         }
@@ -145,7 +170,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
     }
 
     fn acquire_new_haz_ptr(&self) -> HazardPointer {
-        HazardPointer(
+        HazardPointer::new(
             self.hazard_ptrs
                 .push_in_use(AtomicPtr::new(core::ptr::null_mut())),
         )
