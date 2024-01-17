@@ -71,7 +71,7 @@ impl Retire {
     fn new<T>(ptr: *mut T) -> Self {
         Self {
             ptr: ptr as *mut usize,
-            retirable: unsafe { core::mem::transmute(ptr as *mut dyn Retirable) },
+            retirable: ptr as *mut dyn Retirable,
         }
     }
 }

@@ -18,4 +18,4 @@ default = ["std"]
 std = []
 
 [target.'cfg(loom)'.dependencies]
-loom = { version = "0.5", features = ["checkpoint"] }
+loom = { version = "0.7.1", features = ["checkpoint"] }
