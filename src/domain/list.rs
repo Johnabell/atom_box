@@ -1,3 +1,6 @@
+#[cfg(any(test, not(feature = "bicephany")))]
+use core::marker::PhantomData;
+
 use crate::macros::conditional_const;
 use crate::sync::{AtomicIsize, AtomicPtr, Ordering};
 use alloc::boxed::Box;
@@ -12,6 +15,30 @@ pub(super) struct LockFreeList<T> {
 pub(super) struct Node<T> {
     pub(super) value: T,
     pub(super) next: AtomicPtr<Node<T>>,
+}
+
+#[cfg(any(test, not(feature = "bicephany")))]
+pub(super) struct ListIterator<'a, T> {
+    node: *const Node<T>,
+    _list: PhantomData<&'a LockFreeList<T>>,
+}
+
+#[cfg(any(test, not(feature = "bicephany")))]
+impl<'a, T> Iterator for ListIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // # Safety
+        //
+        // Nodes are only deallocated when the domain is dropped. Nodes are allocated via box so
+        // maintain all the safety guarantees associated with Box.
+        let node = unsafe { self.node.as_ref() };
+
+        node.map(|node| {
+            self.node = node.next.load(Ordering::Acquire);
+            &node.value
+        })
+    }
 }
 
 impl<T> LockFreeList<T> {
@@ -72,6 +99,14 @@ impl<T> LockFreeList<T> {
             }
         }
     }
+
+    #[cfg(any(test, not(feature = "bicephany")))]
+    pub(super) fn iter(&self) -> ListIterator<T> {
+        ListIterator {
+            node: self.head.load(Ordering::Acquire),
+            _list: PhantomData,
+        }
+    }
 }
 
 impl<T> Drop for LockFreeList<T> {
@@ -88,6 +123,7 @@ impl<T> Drop for LockFreeList<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::vec;
     use alloc::vec::Vec;
 
     #[test]
@@ -113,6 +149,24 @@ mod test {
             node.next.load(Ordering::Acquire).is_null(),
             "The next pointer should be null"
         );
+    }
+
+    #[test]
+    fn test_iterator() {
+        // Arrange
+        let list = LockFreeList::new();
+
+        list.push(0);
+        list.push(1);
+        list.push(2);
+        list.push(3);
+        list.push(4);
+
+        // Act
+        let members: Vec<_> = list.iter().collect();
+
+        // Assert
+        assert_eq!(vec![&4, &3, &2, &1, &0], members);
     }
 
     #[test]

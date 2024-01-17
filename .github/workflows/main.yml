@@ -102,7 +102,7 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
-      - run: RUSTFLAGS="--cfg loom" cargo test --test concurrency_tests --release
+      - run: RUSTFLAGS="--cfg loom" cargo test --test concurrency_tests --release --features=bicephany
 
   miri:
     name: Miri

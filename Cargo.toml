@@ -16,6 +16,7 @@ categories = ["concurrency", "rust-patterns", "memory-management"]
 [features]
 default = ["std"]
 std = []
+bicephany = []
 
 [build-dependencies]
 rustc_version = "0.4"
