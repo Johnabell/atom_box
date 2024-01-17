@@ -182,16 +182,15 @@ impl<'a, T> Iterator for BicephalyIterator<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.node.is_null() {
-            return None;
-        }
         // # Safety
         //
         // Nodes are only deallocated when the domain is dropped. Nodes are allocated via box so
         // maintain all the safety guarantees associated with Box.
-        let node = unsafe { &*self.node };
-        self.node = node.next_in_use.load(Ordering::Acquire);
-        Some(&node.value)
+        let node = unsafe { self.node.as_ref() };
+        node.map(|node| {
+            self.node = node.next_in_use.load(Ordering::Acquire);
+            &node.value
+        })
     }
 }
 

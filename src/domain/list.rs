@@ -133,7 +133,7 @@ mod test {
         //
         // `list2` has ownership of these values so we are considering them to be moved into list.
         // To avoid a double free we `mem::forget` `list2`
-        unsafe { list.push_all(head_ptr, &(&mut *tail_node_ptr).next, 3) };
+        unsafe { list.push_all(head_ptr, &(*tail_node_ptr).next, 3) };
 
         // Assert
         let mut values = Vec::new();
