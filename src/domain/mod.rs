@@ -55,7 +55,7 @@ impl Retire {
     fn new<T>(ptr: *mut T) -> Self {
         Self {
             ptr: ptr as *mut usize,
-            retirable: unsafe { core::mem::transmute(ptr as *mut dyn Retirable) },
+            retirable: ptr as *mut dyn Retirable,
         }
     }
 }
@@ -97,7 +97,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         pub,
         fn new(reclaim_strategy: ReclaimStrategy) -> Self {
             // Find away to statically enforce this
-            #[cfg(nightly)]
+            #[cfg(all(nightly, not(loom)))]
             assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
             Self::_new(reclaim_strategy)
         }
