@@ -21,7 +21,7 @@ std = []
 rustc_version = "0.4"
 
 [target.'cfg(loom)'.dependencies]
-loom = { version = "0.7.1", features = ["checkpoint"] }
+loom = { version = "0.7.2", features = ["checkpoint"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(nightly)'] }
