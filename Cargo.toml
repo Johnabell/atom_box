@@ -1,6 +1,6 @@
 [package]
 name = "atom_box"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2018"
 authors = ["John Bell <bell.john.andrew@gmail.com>"]
 
@@ -21,7 +21,7 @@ std = []
 rustc_version = "0.4"
 
 [target.'cfg(loom)'.dependencies]
-loom = { version = "0.7.1", features = ["checkpoint"] }
+loom = { version = "0.7.2", features = ["checkpoint"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)', 'cfg(nightly)'] }
