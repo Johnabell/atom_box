@@ -97,7 +97,7 @@ You will then need to install Miri using the instructions in the repo.
 To verify your code, please run the following command:
 
 ```bash
-RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo miri test
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo +nightly miri test
 ```
 
 ## Code of conduct

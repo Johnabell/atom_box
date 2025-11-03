@@ -15,17 +15,11 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: ${{ matrix.features }}
+      - run: cargo check ${{ matrix.features }}
 
   test:
     name: Test Suite
@@ -35,17 +29,11 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: ${{ matrix.features }}
+      - run: cargo test ${{ matrix.features }}
 
   fmt:
     name: Rustfmt
@@ -54,18 +42,12 @@ jobs:
       matrix:
         rust: [ stable, nightly ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
@@ -75,18 +57,12 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: ${{ matrix.features }} -- -D warnings
+          components: clippy
+      - run: cargo clippy ${{ matrix.features }} -- -D warnings
 
   loom:
     name: Loom
@@ -95,13 +71,10 @@ jobs:
       matrix:
         rust: [ stable, nightly ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
       - run: RUSTFLAGS="--cfg loom" cargo test --test concurrency_tests --release --features=bicephany
 
   miri:
@@ -111,12 +84,9 @@ jobs:
       matrix:
         features: [ --no-default-features, --all-features ]
     steps:
-      - run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: nightly
-          override: true
-      - run: rustup component add miri
-      - run: RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo miri test ${{ matrix.features }}
+          components: miri
+      - run: RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo +nightly miri test ${{ matrix.features }}
