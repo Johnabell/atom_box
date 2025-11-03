@@ -23,9 +23,8 @@ pub(crate) struct Node<T> {
 
 impl<T> Node<T> {
     conditional_const!(
-        "Creates a new node for [`Bicephaly`]",
-        pub(self),
-        fn new(value: T) -> Self {
+        /// Creates a new node for [`Bicephaly`]
+        pub(self) fn new(value: T) -> Self {
             Self {
                 value,
                 next_available: AtomicPtr::new(core::ptr::null_mut()),
@@ -76,9 +75,8 @@ macro_rules! push_node_method {
 
 impl<T> Bicephaly<T> {
     conditional_const!(
-        "Creates a new `Bicephaly`",
-        pub,
-        fn new() -> Self {
+        /// Creates a new `Bicephaly`
+        pub fn new() -> Self {
             Self {
                 available_head: AtomicPtr::new(core::ptr::null_mut()),
                 in_use_head: AtomicPtr::new(core::ptr::null_mut()),

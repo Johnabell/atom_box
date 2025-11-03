@@ -43,9 +43,8 @@ impl<'a, T> Iterator for ListIterator<'a, T> {
 
 impl<T> LockFreeList<T> {
     conditional_const!(
-        "Creates a new `LockFreeList`",
-        pub,
-        fn new() -> Self {
+        /// Creates a new `LockFreeList`
+        pub fn new() -> Self {
             Self {
                 head: AtomicPtr::new(core::ptr::null_mut()),
                 count: AtomicIsize::new(0),

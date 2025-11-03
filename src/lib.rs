@@ -71,13 +71,18 @@ mod macros {
     // The loom atomics do not have const constructors. So we cannot use them in const functions.
     // This macro enables us to create a const function in normal compilation and a non const
     // function when compiling for loom.
+    #[cfg(not(loom))]
     macro_rules! conditional_const {
-        ($doc_comment:expr, $visibility:vis, $( $token:tt )*) => {
-            #[doc = $doc_comment]
-            #[cfg(not(loom))]
-            $visibility const $( $token )*
-            #[cfg(loom)]
-            $visibility $( $token )*
+        ($( #[doc = $doc:expr] )* $visibility:vis fn $( $token:tt )*) => {
+            $( #[doc = $doc] )*
+            $visibility const fn $( $token )*
+        };
+    }
+    #[cfg(loom)]
+    macro_rules! conditional_const {
+        ($( #[doc = $doc:expr] )* $visibility:vis fn $( $token:tt )*) => {
+            $( #[doc = $doc] )*
+            $visibility fn $( $token )*
         };
     }
     pub(crate) use conditional_const;

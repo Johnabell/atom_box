@@ -120,21 +120,19 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     }
 
     conditional_const!(
-        "Create a new `Domain` with provided `ReclaimStrategy`.
-
-# Example
-
-```
-use atom_box::domain::{Domain, ReclaimStrategy};
-
-const CUSTOM_DOMAIN_ID: usize = 42;
-static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
-```
-
-On nightly this will panic if the domain id is equal to the shared domain's id (0).
-",
-        pub,
-        fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+        /// Create a new `Domain` with provided `ReclaimStrategy`.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use atom_box::domain::{Domain, ReclaimStrategy};
+        ///
+        /// const CUSTOM_DOMAIN_ID: usize = 42;
+        /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
+        /// ```
+        ///
+        /// On nightly this will panic if the domain id is equal to the shared domain's id (0).
+        pub fn new(reclaim_strategy: ReclaimStrategy) -> Self {
             // Find away to statically enforce this
             #[cfg(all(nightly, not(loom)))]
             assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
@@ -143,9 +141,8 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
     );
 
     conditional_const!(
-        "Internal function for creating a new `Domain`",
-        pub(crate),
-        fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
+        /// Internal function for creating a new `Domain`
+        pub(crate) fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
             Self {
                 hazard_ptrs: HazardPointers::new(),
                 retired: LockFreeList::new(),
