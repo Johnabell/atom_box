@@ -43,9 +43,8 @@ impl<'a, T> Iterator for ListIterator<'a, T> {
 
 impl<T> LockFreeList<T> {
     conditional_const!(
-        "Creates a new `LockFreeList`",
-        pub,
-        fn new() -> Self {
+        /// Creates a new `LockFreeList`
+        pub fn new() -> Self {
             Self {
                 head: AtomicPtr::new(core::ptr::null_mut()),
                 count: AtomicIsize::new(0),
@@ -101,7 +100,7 @@ impl<T> LockFreeList<T> {
     }
 
     #[cfg(any(test, not(feature = "bicephany")))]
-    pub(super) fn iter(&self) -> ListIterator<T> {
+    pub(super) fn iter(&self) -> ListIterator<'_, T> {
         ListIterator {
             node: self.head.load(Ordering::Acquire),
             _list: PhantomData,
@@ -198,7 +197,8 @@ mod test {
             node_ptr = node.next.load(Ordering::Acquire);
         }
         assert_eq!(
-            values, [2, 2, 2, 1, 1, 1, 1],
+            values,
+            [2, 2, 2, 1, 1, 1, 1],
             "The list should contain all the values from pushed to it from list2 and the original values from list 1"
         );
         // To avoid dropping the nodes which we moved from list2 to list1

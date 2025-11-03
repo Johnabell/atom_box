@@ -23,9 +23,8 @@ pub(crate) struct Node<T> {
 
 impl<T> Node<T> {
     conditional_const!(
-        "Creates a new node for [`Bicephaly`]",
-        pub(self),
-        fn new(value: T) -> Self {
+        /// Creates a new node for [`Bicephaly`]
+        pub(self) fn new(value: T) -> Self {
             Self {
                 value,
                 next_available: AtomicPtr::new(core::ptr::null_mut()),
@@ -76,9 +75,8 @@ macro_rules! push_node_method {
 
 impl<T> Bicephaly<T> {
     conditional_const!(
-        "Creates a new `Bicephaly`",
-        pub,
-        fn new() -> Self {
+        /// Creates a new `Bicephaly`
+        pub fn new() -> Self {
             Self {
                 available_head: AtomicPtr::new(core::ptr::null_mut()),
                 in_use_head: AtomicPtr::new(core::ptr::null_mut()),
@@ -150,7 +148,7 @@ impl<T> Bicephaly<T> {
 
     push_node_method!(push_in_use_node, in_use_head, next_in_use, in_use_count);
 
-    pub(super) fn iter(&self) -> BicephalyIterator<T> {
+    pub(super) fn iter(&self) -> BicephalyIterator<'_, T> {
         BicephalyIterator {
             node: self.in_use_head.load(Ordering::Acquire),
             _bicephaly: PhantomData,

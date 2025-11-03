@@ -1,7 +1,7 @@
 [package]
 name = "atom_box"
-version = "0.2.1"
-edition = "2018"
+version = "0.3.0"
+edition = "2024"
 authors = ["John Bell <bell.john.andrew@gmail.com>"]
 
 license = "MIT OR Apache-2.0"

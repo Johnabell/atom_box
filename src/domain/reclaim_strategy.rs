@@ -6,7 +6,7 @@ use core::time::Duration;
 
 #[cfg(feature = "std")]
 const DEFAULT_SYNC_THRESHOLD: Duration = Duration::from_nanos(2000000000);
-const DEFAULT_RETIERED_THRESHOLD: isize = 1000;
+const DEFAULT_RETIRED_THRESHOLD: isize = 1000;
 const DEFAULT_HAZARD_POINTER_MULTIPLIER: isize = 2;
 
 /// The strategy which should be used for reclaiming retired items in a `Domain`.
@@ -41,9 +41,8 @@ impl ReclaimStrategy {
     }
 
     conditional_const!(
-        "Creates the default reclamation strategy for a domain",
-        pub,
-        fn default() -> Self {
+        /// Creates the default reclamation strategy for a domain
+        pub fn default() -> Self {
             Self::TimedCapped(TimedCappedSettings::default())
         }
     );
@@ -81,30 +80,27 @@ pub struct TimedCappedSettings {
 impl TimedCappedSettings {
     #[cfg(feature = "std")]
     conditional_const!(
-        "Creates a new `TimedCappedSettings`.
-
-# Arguments
-
-* `sync_timeout` - The duration between successive reclaim attempts
-* `retired_threshold` - The threshold after which a retired items should be reclaimed
-* 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of hazard
-pointers multiplied by `hazard_pointer_multiplier` then an attempt will be made to reclaim
-the retired items.
-
-# Example
-
-```
-use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
-
-const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new_with_timeout(
-    core::time::Duration::from_nanos(5000000000),
-    1000,
-    3,
-));
-```
-",
-        pub,
-        fn new_with_timeout(
+        /// Creates a new `TimedCappedSettings`.
+        ///
+        /// # Arguments
+        ///
+        /// * `sync_timeout` - The duration between successive reclaim attempts
+        /// * `retired_threshold` - The threshold after which a retired items should be reclaimed
+        /// * `hazard_pointer_multiplier` - If the number of retired items exceeds the number of
+        ///   hazard pointers multiplied by `hazard_pointer_multiplier` then an attempt will be made
+        ///   to reclaim the retired items.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// # use core::time::Duration;
+        /// use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
+        ///
+        /// const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(
+        ///     TimedCappedSettings::new_with_timeout(Duration::from_nanos(5000000000), 1000, 3),
+        /// );
+        /// ```
+        pub fn new_with_timeout(
             sync_timeout: Duration,
             retired_threshold: isize,
             hazard_pointer_multiplier: isize,
@@ -121,28 +117,24 @@ const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCapp
     );
 
     conditional_const!(
-        "Creates a new `TimedCappedSettings`.
-
-# Arguments
-
-* `retired_threshold` - The threshold after which a retired items should be reclaimed
-* 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of hazard
-pointers multiplied by `hazard_pointer_multiplier` then an attempt will be made to reclaim
-the retired items.
-
-# Example
-
-```
-use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
-
-const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCappedSettings::new(
-    1000,
-    3,
-));
-```
-",
-        pub,
-        fn new(retired_threshold: isize, hazard_pointer_multiplier: isize) -> Self {
+        /// Creates a new `TimedCappedSettings`.
+        ///
+        /// # Arguments
+        ///
+        /// * `retired_threshold` - The threshold after which a retired items should be reclaimed
+        /// * 'hazard_pointer_multiplier` - If the number of retired items exceeds the number of
+        ///   hazard pointers multiplied by `hazard_pointer_multiplier` then an attempt will be
+        ///   made to reclaim the retired items.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use atom_box::domain::{ReclaimStrategy, TimedCappedSettings};
+        ///
+        /// const RECLAIM_STRATEGY: ReclaimStrategy =
+        ///     ReclaimStrategy::TimedCapped(TimedCappedSettings::new(1000, 3));
+        /// ```
+        pub fn new(retired_threshold: isize, hazard_pointer_multiplier: isize) -> Self {
             Self {
                 #[cfg(feature = "std")]
                 last_sync_time: AtomicU64::new(0),
@@ -195,22 +187,18 @@ const RECLAIM_STRATEGY: ReclaimStrategy = ReclaimStrategy::TimedCapped(TimedCapp
     }
 
     conditional_const!(
-        "Creates the default `TimedCappedSettings`.
-
-This is not an implementation of `Default` since it is a const function.",
-        pub,
-        fn default() -> Self {
-            Self::new(
-                DEFAULT_RETIERED_THRESHOLD,
-                DEFAULT_HAZARD_POINTER_MULTIPLIER,
-            )
+        /// Creates the default `TimedCappedSettings`.
+        ///
+        /// This is not an implementation of `Default` since it is a const function.
+        pub fn default() -> Self {
+            Self::new(DEFAULT_RETIRED_THRESHOLD, DEFAULT_HAZARD_POINTER_MULTIPLIER)
         }
     );
 
     #[cfg(feature = "std")]
     /// Set the timeout after which a reclamation should be attempted.
     ///
-    /// If the time between the previous reclaimation and now exceeds this threshold, an attempt
+    /// If the time between the previous reclamation and now exceeds this threshold, an attempt
     /// will be made to reclaim the retired items.
     pub const fn with_timeout(self, sync_timeout: Duration) -> Self {
         Self {

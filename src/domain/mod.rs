@@ -8,17 +8,21 @@
 //!
 //! When using multiple domains in a programme care must be taken to ensure that a value from an
 //! `AtomBox` associated with one `Domain` is not stored in a `AtomBox` associated with a different
-//! `Domain`. To help alleviate this problem, domain is parameterised by an integer ID as a const generic.
-//! If used appropriately, this can provide static verification that values of one `Domain` are not stored
-//! in another.
+//! `Domain`. To help alleviate this problem, domain is parameterised by an integer ID as a const
+//! generic. If used appropriately, this can provide static verification that values of one `Domain`
+//! are not stored in another.
 //!
 //! A runtime attempt to store a value from one `Domain` in another will result in a `panic`.
 //!
 //! # Example
 //!
 //! Creating an `AtomBox` using a custom domain.
+//!
 //! ```
-//! use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+//! use atom_box::{
+//!     AtomBox,
+//!     domain::{Domain, ReclaimStrategy},
+//! };
 //!
 //! const CUSTOM_DOMAIN_ID: usize = 42;
 //! static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
@@ -99,7 +103,8 @@ impl Retire {
     }
 }
 
-/// A holder of hazard pointers protecting the access to the values stored in all associated `AtomBox`s.
+/// A holder of hazard pointers protecting the access to the values stored in all associated
+/// `AtomBox`s.
 ///
 /// A domain is responsible for handing out hazard pointer to protect the access to the values
 /// stored in different `AtomBox`s.
@@ -120,21 +125,19 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     }
 
     conditional_const!(
-        "Create a new `Domain` with provided `ReclaimStrategy`.
-
-# Example
-
-```
-use atom_box::domain::{Domain, ReclaimStrategy};
-
-const CUSTOM_DOMAIN_ID: usize = 42;
-static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
-```
-
-On nightly this will panic if the domain id is equal to the shared domain's id (0).
-",
-        pub,
-        fn new(reclaim_strategy: ReclaimStrategy) -> Self {
+        /// Create a new `Domain` with provided `ReclaimStrategy`.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use atom_box::domain::{Domain, ReclaimStrategy};
+        ///
+        /// const CUSTOM_DOMAIN_ID: usize = 42;
+        /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
+        /// ```
+        ///
+        /// On nightly this will panic if the domain id is equal to the shared domain's id (0).
+        pub fn new(reclaim_strategy: ReclaimStrategy) -> Self {
             // Find away to statically enforce this
             #[cfg(all(nightly, not(loom)))]
             assert!(DOMAIN_ID != crate::SHARED_DOMAIN_ID);
@@ -143,9 +146,8 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
     );
 
     conditional_const!(
-        "Internal function for creating a new `Domain`",
-        pub(crate),
-        fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
+        /// Internal function for creating a new `Domain`
+        pub(crate) fn _new(reclaim_strategy: ReclaimStrategy) -> Self {
             Self {
                 hazard_ptrs: HazardPointers::new(),
                 retired: LockFreeList::new(),
@@ -154,7 +156,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         }
     );
 
-    pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer {
+    pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer<'_> {
         if let Some(haz_ptr) = self.hazard_ptrs.get_available() {
             HazardPointer::new(haz_ptr)
         } else {
@@ -167,7 +169,7 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
         self.hazard_ptrs.set_node_available(haz_ptr.0);
     }
 
-    fn acquire_new_haz_ptr(&self) -> HazardPointer {
+    fn acquire_new_haz_ptr(&self) -> HazardPointer<'_> {
         HazardPointer::new(
             self.hazard_ptrs
                 .push_in_use(AtomicPtr::new(core::ptr::null_mut())),
@@ -200,11 +202,13 @@ On nightly this will panic if the domain id is equal to the shared domain's id (
 
     /// Reclaim all unprotected retired items.
     ///
-    ///
     /// # Example
     ///
     /// ```
-    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+    /// use atom_box::{
+    ///     AtomBox,
+    ///     domain::{Domain, ReclaimStrategy},
+    /// };
     ///
     /// const CUSTOM_DOMAIN_ID: usize = 42;
     /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Manual);

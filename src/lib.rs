@@ -71,13 +71,18 @@ mod macros {
     // The loom atomics do not have const constructors. So we cannot use them in const functions.
     // This macro enables us to create a const function in normal compilation and a non const
     // function when compiling for loom.
+    #[cfg(not(loom))]
     macro_rules! conditional_const {
-        ($doc_comment:expr, $visibility:vis, $( $token:tt )*) => {
-            #[doc = $doc_comment]
-            #[cfg(not(loom))]
-            $visibility const $( $token )*
-            #[cfg(loom)]
-            $visibility $( $token )*
+        ($( #[doc = $doc:expr] )* $visibility:vis fn $( $token:tt )*) => {
+            $( #[doc = $doc] )*
+            $visibility const fn $( $token )*
+        };
+    }
+    #[cfg(loom)]
+    macro_rules! conditional_const {
+        ($( #[doc = $doc:expr] )* $visibility:vis fn $( $token:tt )*) => {
+            $( #[doc = $doc] )*
+            $visibility fn $( $token )*
         };
     }
     pub(crate) use conditional_const;
@@ -195,7 +200,7 @@ impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
 }
 
 impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
-    /// Creates a new `AtomBox` and assoicates it with the given domain.
+    /// Creates a new `AtomBox` and associates it with the given domain.
     ///
     /// # Example
     ///
@@ -381,7 +386,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The return value is a result indicating whether the new value was written.
     /// On success, this value is guaranteed to be equal to `current_value` and the return value is
     /// a StoreGuard which dereferences to the old value.
-    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
+    /// On failure, the `Err` contains a LoadGuard which dereferences to the `current_value`.
     ///
     /// **Note:** This method is only available on platforms that support atomic operations on
     /// pointers.
@@ -439,7 +444,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The return value is a result indicating whether the new value was written.
     /// On success, this value is guaranteed to be equal to `current_value` and the return value is
     /// a StoreGuard which dereferences to the old value.
-    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
+    /// On failure, the `Err` contains a LoadGuard which dereferences to the `current_value`.
     ///
     /// **Note:** This method is only available on platforms that support atomic operations on
     /// pointers.
@@ -469,21 +474,18 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     ///     }
     /// };
     /// let new_value = atom_box1.load();
-    /// assert!(
-    ///     *new_value == 1,
-    ///     "value should have been increased"
-    /// );
+    /// assert!(*new_value == 1, "value should have been increased");
     /// ```
     ///
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{Domain, Reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
-    /// const custom_domain_id: usize = 42;
-    /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
     ///
-    /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
+    /// let atom_box1 = AtomBox::new_with_domain("hello", &CUSTOM_DOMAIN);
     /// let atom_box2 = AtomBox::new("world");
     ///
     /// let guard = atom_box1.swap("bye bye");
@@ -624,10 +626,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     ///     }
     /// };
     /// let new_value = atom_box1.load();
-    /// assert!(
-    ///     *new_value == 1,
-    ///     "value should have been increased"
-    /// );
+    /// assert!(*new_value == 1, "value should have been increased");
     /// ```
     ///
     /// The following example will fail to compile.
@@ -635,10 +634,10 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// ```compile_fail
     /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
-    /// const custom_domain_id: usize = 42;
-    /// static custom_domain: Domain<custom_domain_id> = Domain::new(ReclaimStrategy::Eager);
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
     ///
-    /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
+    /// let atom_box1 = AtomBox::new_with_domain("hello", &CUSTOM_DOMAIN);
     /// let atom_box2 = AtomBox::new("world");
     ///
     /// let guard = atom_box1.swap("bye bye");
@@ -868,7 +867,10 @@ mod test {
                 drop_count: &drop_count,
                 value: 30,
             });
-            assert_eq!(guard.ptr, value.ptr, "When we swap the value we get back a guard that contains a pointer to the old value");
+            assert_eq!(
+                guard.ptr, value.ptr,
+                "When we swap the value we get back a guard that contains a pointer to the old value"
+            );
             let new_value = atom_box.load();
             assert_eq!(
                 **new_value, 30,
@@ -881,7 +883,10 @@ mod test {
             0,
             "Value should not be dropped while there is an active reference to it"
         );
-        assert_eq!(**value, 20, "We are still able to access the original value since we have been holding a load guard");
+        assert_eq!(
+            **value, 20,
+            "We are still able to access the original value since we have been holding a load guard"
+        );
         drop(value);
         let _ = atom_box.swap(DropTester {
             drop_count: &drop_count,
@@ -897,7 +902,7 @@ mod test {
     }
 
     #[test]
-    fn swap_from_gaurd_test() {
+    fn swap_from_guard_test() {
         let drop_count = AtomicUsize::new(0);
         let drop_count_for_placeholder = AtomicUsize::new(0);
         let value1 = DropTester {
