@@ -6,7 +6,7 @@ use core::time::Duration;
 
 #[cfg(feature = "std")]
 const DEFAULT_SYNC_THRESHOLD: Duration = Duration::from_nanos(2000000000);
-const DEFAULT_RETIERED_THRESHOLD: isize = 1000;
+const DEFAULT_RETIRED_THRESHOLD: isize = 1000;
 const DEFAULT_HAZARD_POINTER_MULTIPLIER: isize = 2;
 
 /// The strategy which should be used for reclaiming retired items in a `Domain`.
@@ -198,7 +198,7 @@ impl TimedCappedSettings {
     #[cfg(feature = "std")]
     /// Set the timeout after which a reclamation should be attempted.
     ///
-    /// If the time between the previous reclaimation and now exceeds this threshold, an attempt
+    /// If the time between the previous reclamation and now exceeds this threshold, an attempt
     /// will be made to reclaim the retired items.
     pub const fn with_timeout(self, sync_timeout: Duration) -> Self {
         Self {

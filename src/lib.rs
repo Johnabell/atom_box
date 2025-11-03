@@ -200,12 +200,12 @@ impl<T> AtomBox<'static, T, SHARED_DOMAIN_ID> {
 }
 
 impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
-    /// Creates a new `AtomBox` and assoicates it with the given domain.
+    /// Creates a new `AtomBox` and associates it with the given domain.
     ///
     /// # Example
     ///
     /// ```
-    /// use atom_box::{AtomBox, domain::Domain, domain::ReclaimStrategy};
+    /// use atom_box::{domain::Domain, domain::ReclaimStrategy, AtomBox};
     ///
     /// const CUSTOM_DOMAIN_ID: usize = 42;
     /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
@@ -386,7 +386,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The return value is a result indicating whether the new value was written.
     /// On success, this value is guaranteed to be equal to `current_value` and the return value is
     /// a StoreGuard which dereferences to the old value.
-    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
+    /// On failure, the `Err` contains a LoadGuard which dereferences to the `current_value`.
     ///
     /// **Note:** This method is only available on platforms that support atomic operations on
     /// pointers.
@@ -444,7 +444,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// The return value is a result indicating whether the new value was written.
     /// On success, this value is guaranteed to be equal to `current_value` and the return value is
     /// a StoreGuard which dereferences to the old value.
-    /// On failure, the `Err` contains a LoadGaurd which dereferences to the `current_value`.
+    /// On failure, the `Err` contains a LoadGuard which dereferences to the `current_value`.
     ///
     /// **Note:** This method is only available on platforms that support atomic operations on
     /// pointers.
@@ -474,21 +474,18 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     ///     }
     /// };
     /// let new_value = atom_box1.load();
-    /// assert!(
-    ///     *new_value == 1,
-    ///     "value should have been increased"
-    /// );
+    /// assert!(*new_value == 1, "value should have been increased");
     /// ```
     ///
     /// The following example will fail to compile.
     ///
     /// ```compile_fail
-    /// use atom_box::{AtomBox, domain::{Domain, Reclaimstrategy}};
+    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
-    /// const custom_domain_id: usize = 42;
-    /// static custom_domain: domain<custom_domain_id> = domain::new(reclaimstrategy::eager);
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
     ///
-    /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
+    /// let atom_box1 = AtomBox::new_with_domain("hello", &CUSTOM_DOMAIN);
     /// let atom_box2 = AtomBox::new("world");
     ///
     /// let guard = atom_box1.swap("bye bye");
@@ -629,10 +626,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     ///     }
     /// };
     /// let new_value = atom_box1.load();
-    /// assert!(
-    ///     *new_value == 1,
-    ///     "value should have been increased"
-    /// );
+    /// assert!(*new_value == 1, "value should have been increased");
     /// ```
     ///
     /// The following example will fail to compile.
@@ -640,10 +634,10 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// ```compile_fail
     /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
     ///
-    /// const custom_domain_id: usize = 42;
-    /// static custom_domain: Domain<custom_domain_id> = Domain::new(ReclaimStrategy::Eager);
+    /// const CUSTOM_DOMAIN_ID: usize = 42;
+    /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
     ///
-    /// let atom_box1 = AtomBox::new_with_domain("hello", &custom_domain);
+    /// let atom_box1 = AtomBox::new_with_domain("hello", &CUSTOM_DOMAIN);
     /// let atom_box2 = AtomBox::new("world");
     ///
     /// let guard = atom_box1.swap("bye bye");
@@ -902,7 +896,7 @@ mod test {
     }
 
     #[test]
-    fn swap_from_gaurd_test() {
+    fn swap_from_guard_test() {
         let drop_count = AtomicUsize::new(0);
         let drop_count_for_placeholder = AtomicUsize::new(0);
         let value1 = DropTester {

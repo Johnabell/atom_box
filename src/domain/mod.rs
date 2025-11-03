@@ -8,17 +8,21 @@
 //!
 //! When using multiple domains in a programme care must be taken to ensure that a value from an
 //! `AtomBox` associated with one `Domain` is not stored in a `AtomBox` associated with a different
-//! `Domain`. To help alleviate this problem, domain is parameterised by an integer ID as a const generic.
-//! If used appropriately, this can provide static verification that values of one `Domain` are not stored
-//! in another.
+//! `Domain`. To help alleviate this problem, domain is parameterised by an integer ID as a const
+//! generic. If used appropriately, this can provide static verification that values of one `Domain`
+//! are not stored in another.
 //!
 //! A runtime attempt to store a value from one `Domain` in another will result in a `panic`.
 //!
 //! # Example
 //!
 //! Creating an `AtomBox` using a custom domain.
+//!
 //! ```
-//! use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+//! use atom_box::{
+//!     domain::{Domain, ReclaimStrategy},
+//!     AtomBox,
+//! };
 //!
 //! const CUSTOM_DOMAIN_ID: usize = 42;
 //! static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
@@ -99,7 +103,8 @@ impl Retire {
     }
 }
 
-/// A holder of hazard pointers protecting the access to the values stored in all associated `AtomBox`s.
+/// A holder of hazard pointers protecting the access to the values stored in all associated
+/// `AtomBox`s.
 ///
 /// A domain is responsible for handing out hazard pointer to protect the access to the values
 /// stored in different `AtomBox`s.
@@ -197,11 +202,13 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
 
     /// Reclaim all unprotected retired items.
     ///
-    ///
     /// # Example
     ///
     /// ```
-    /// use atom_box::{AtomBox, domain::{Domain, ReclaimStrategy}};
+    /// use atom_box::{
+    ///     domain::{Domain, ReclaimStrategy},
+    ///     AtomBox,
+    /// };
     ///
     /// const CUSTOM_DOMAIN_ID: usize = 42;
     /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Manual);
