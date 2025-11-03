@@ -151,7 +151,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
         }
     );
 
-    pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer {
+    pub(crate) fn acquire_haz_ptr(&self) -> HazardPointer<'_> {
         if let Some(haz_ptr) = self.hazard_ptrs.get_available() {
             HazardPointer::new(haz_ptr)
         } else {
@@ -164,7 +164,7 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
         self.hazard_ptrs.set_node_available(haz_ptr.0);
     }
 
-    fn acquire_new_haz_ptr(&self) -> HazardPointer {
+    fn acquire_new_haz_ptr(&self) -> HazardPointer<'_> {
         HazardPointer::new(
             self.hazard_ptrs
                 .push_in_use(AtomicPtr::new(core::ptr::null_mut())),

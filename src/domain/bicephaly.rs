@@ -148,7 +148,7 @@ impl<T> Bicephaly<T> {
 
     push_node_method!(push_in_use_node, in_use_head, next_in_use, in_use_count);
 
-    pub(super) fn iter(&self) -> BicephalyIterator<T> {
+    pub(super) fn iter(&self) -> BicephalyIterator<'_, T> {
         BicephalyIterator {
             node: self.in_use_head.load(Ordering::Acquire),
             _bicephaly: PhantomData,

@@ -100,7 +100,7 @@ impl<T> LockFreeList<T> {
     }
 
     #[cfg(any(test, not(feature = "bicephany")))]
-    pub(super) fn iter(&self) -> ListIterator<T> {
+    pub(super) fn iter(&self) -> ListIterator<'_, T> {
         ListIterator {
             node: self.head.load(Ordering::Acquire),
             _list: PhantomData,
