@@ -89,4 +89,4 @@ jobs:
         with:
           toolchain: nightly
           components: miri
-      - run: RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo miri test ${{ matrix.features }}
+      - run: RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-ignore-leaks -Zmiri-disable-isolation" cargo +nightly miri test ${{ matrix.features }}
