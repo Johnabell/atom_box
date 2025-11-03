@@ -16,7 +16,7 @@ jobs:
         features: [ --no-default-features, --all-features ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
       - run: cargo check ${{ matrix.features }}
@@ -30,7 +30,7 @@ jobs:
         features: [ --no-default-features, --all-features ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
       - run: cargo test ${{ matrix.features }}
@@ -43,7 +43,7 @@ jobs:
         rust: [ stable, nightly ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: rustfmt
@@ -58,7 +58,7 @@ jobs:
         features: [ --no-default-features, --all-features ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy
@@ -72,7 +72,7 @@ jobs:
         rust: [ stable, nightly ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
       - run: RUSTFLAGS="--cfg loom" cargo test --test concurrency_tests --release --features=bicephany
@@ -85,7 +85,7 @@ jobs:
         features: [ --no-default-features, --all-features ]
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
           components: miri
