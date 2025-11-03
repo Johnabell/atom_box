@@ -197,7 +197,8 @@ mod test {
             node_ptr = node.next.load(Ordering::Acquire);
         }
         assert_eq!(
-            values, [2, 2, 2, 1, 1, 1, 1],
+            values,
+            [2, 2, 2, 1, 1, 1, 1],
             "The list should contain all the values from pushed to it from list2 and the original values from list 1"
         );
         // To avoid dropping the nodes which we moved from list2 to list1

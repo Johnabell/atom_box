@@ -1,6 +1,6 @@
 #[cfg(loom)]
 mod loom_test {
-    use atom_box::{domain::Domain, domain::ReclaimStrategy, AtomBox};
+    use atom_box::{AtomBox, domain::Domain, domain::ReclaimStrategy};
     use loom::sync::Arc;
     use loom::thread;
     use std::convert::From;

@@ -20,8 +20,8 @@
 //!
 //! ```
 //! use atom_box::{
-//!     domain::{Domain, ReclaimStrategy},
 //!     AtomBox,
+//!     domain::{Domain, ReclaimStrategy},
 //! };
 //!
 //! const CUSTOM_DOMAIN_ID: usize = 42;
@@ -206,8 +206,8 @@ impl<const DOMAIN_ID: usize> Domain<DOMAIN_ID> {
     ///
     /// ```
     /// use atom_box::{
-    ///     domain::{Domain, ReclaimStrategy},
     ///     AtomBox,
+    ///     domain::{Domain, ReclaimStrategy},
     /// };
     ///
     /// const CUSTOM_DOMAIN_ID: usize = 42;

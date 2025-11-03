@@ -205,7 +205,7 @@ impl<'domain, T, const DOMAIN_ID: usize> AtomBox<'domain, T, DOMAIN_ID> {
     /// # Example
     ///
     /// ```
-    /// use atom_box::{domain::Domain, domain::ReclaimStrategy, AtomBox};
+    /// use atom_box::{AtomBox, domain::Domain, domain::ReclaimStrategy};
     ///
     /// const CUSTOM_DOMAIN_ID: usize = 42;
     /// static CUSTOM_DOMAIN: Domain<CUSTOM_DOMAIN_ID> = Domain::new(ReclaimStrategy::Eager);
@@ -867,7 +867,10 @@ mod test {
                 drop_count: &drop_count,
                 value: 30,
             });
-            assert_eq!(guard.ptr, value.ptr, "When we swap the value we get back a guard that contains a pointer to the old value");
+            assert_eq!(
+                guard.ptr, value.ptr,
+                "When we swap the value we get back a guard that contains a pointer to the old value"
+            );
             let new_value = atom_box.load();
             assert_eq!(
                 **new_value, 30,
@@ -880,7 +883,10 @@ mod test {
             0,
             "Value should not be dropped while there is an active reference to it"
         );
-        assert_eq!(**value, 20, "We are still able to access the original value since we have been holding a load guard");
+        assert_eq!(
+            **value, 20,
+            "We are still able to access the original value since we have been holding a load guard"
+        );
         drop(value);
         let _ = atom_box.swap(DropTester {
             drop_count: &drop_count,
