@@ -15,7 +15,7 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -29,7 +29,7 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -42,7 +42,7 @@ jobs:
       matrix:
         rust: [ stable, nightly ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -57,7 +57,7 @@ jobs:
         rust: [ stable, nightly ]
         features: [ --no-default-features, --all-features ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -71,7 +71,7 @@ jobs:
       matrix:
         rust: [ stable, nightly ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -84,7 +84,7 @@ jobs:
       matrix:
         features: [ --no-default-features, --all-features ]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
